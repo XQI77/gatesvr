@@ -76,38 +76,6 @@ func (c *UnicastClient) PushToClient(ctx context.Context, targetType, targetID, 
 	return nil
 }
 
-// BatchPushToClients 批量推送消息到多个客户端
-func (c *UnicastClient) BatchPushToClients(ctx context.Context, targets []map[string]string, msgType, title, content string, data []byte) (*pb.BatchUnicastPushResponse, error) {
-	if c.client == nil {
-		return nil, fmt.Errorf("客户端未连接")
-	}
-
-	// 转换目标列表
-	pbTargets := make([]*pb.UnicastTarget, len(targets))
-	for i, target := range targets {
-		pbTargets[i] = &pb.UnicastTarget{
-			TargetType: target["type"],
-			TargetId:   target["id"],
-		}
-	}
-
-	req := &pb.BatchUnicastPushRequest{
-		Targets: pbTargets,
-		MsgType: msgType,
-		Title:   title,
-		Content: content,
-		Data:    data,
-	}
-
-	resp, err := c.client.BatchPushToClients(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("批量推送gRPC调用失败: %w", err)
-	}
-
-	log.Printf("批量推送完成 - 成功: %d/%d", resp.SuccessCount, resp.TotalCount)
-	return resp, nil
-}
-
 // PushToGID 推送到指定GID
 func (c *UnicastClient) PushToGID(ctx context.Context, gid int64, msgType, title, content string, data []byte) error {
 	return c.PushToClient(ctx, "gid", fmt.Sprintf("%d", gid), msgType, title, content, data)
@@ -140,25 +108,6 @@ func (c *UnicastClient) DemoUnicastPush() {
 	err = c.PushToOpenID(ctx, "user123", "personal", "个人消息", "您有新的消息", nil)
 	if err != nil {
 		log.Printf("推送到OpenID失败: %v", err)
-	}
-
-	// 3. 批量推送
-	targets := []map[string]string{
-		{"type": "gid", "id": "12345"},
-		{"type": "gid", "id": "67890"},
-		{"type": "openid", "id": "user456"},
-	}
-
-	resp, err := c.BatchPushToClients(ctx, targets, "broadcast", "批量通知", "这是一条批量推送消息", []byte("batch data"))
-	if err != nil {
-		log.Printf("批量推送失败: %v", err)
-	} else {
-		log.Printf("批量推送结果: 成功 %d/%d", resp.SuccessCount, resp.TotalCount)
-		for _, result := range resp.Results {
-			if !result.Success {
-				log.Printf("推送失败 - 目标: %s:%s, 错误: %s", result.TargetType, result.TargetId, result.ErrorMessage)
-			}
-		}
 	}
 
 	log.Println("=== 单播推送演示完成 ===")

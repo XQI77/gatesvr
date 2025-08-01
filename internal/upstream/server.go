@@ -24,9 +24,6 @@ type Server struct {
 	// 单播推送客户端（新增）
 	unicastClient *UnicastClient
 
-	// 会话管理器（新增）
-	sessionManager *SessionManager
-
 	// 服务状态
 	startTime time.Time
 
@@ -46,11 +43,10 @@ type Server struct {
 // NewServer 创建新的上游服务器
 func NewServer(addr string) *Server {
 	return &Server{
-		addr:           addr,
-		startTime:      time.Now(),
-		unicastClient:  NewUnicastClient("localhost:8082"), // 网关gRPC地址
-		sessionManager: NewSessionManager(),                // 初始化会话管理器
-		stopCh:         make(chan struct{}),
+		addr:          addr,
+		startTime:     time.Now(),
+		unicastClient: NewUnicastClient("localhost:8082"), // 网关gRPC地址
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -80,8 +76,8 @@ func (s *Server) Start() error {
 	pb.RegisterUpstreamServiceServer(s.grpcServer, s)
 
 	// 启动单播推送演示任务 (演示)
-	//s.wg.Add(1)
-	//go s.demoUnicastPush()
+	s.wg.Add(1)
+	go s.demoUnicastPush()
 
 	log.Printf("上游服务器已启动: %s", s.addr)
 	log.Printf("gRPC服务接口:")
@@ -98,11 +94,6 @@ func (s *Server) Stop() {
 
 	// 停止信号
 	close(s.stopCh)
-
-	// 停止会话管理器
-	if s.sessionManager != nil {
-		s.sessionManager.Stop()
-	}
 
 	// 关闭单播推送客户端
 	if s.unicastClient != nil {
@@ -127,54 +118,25 @@ func (s *Server) Stop() {
 
 // ProcessRequest 处理业务请求
 func (s *Server) ProcessRequest(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
-	log.Printf("收到业务请求 - 会话: %s, 动作: %s, 客户端序号: %d, OpenID: %s",
-		req.SessionId, req.Action, req.ClientSeqId, req.Openid)
-
-	// 验证OpenID并生成服务端序列号
-	serverSeq := s.sessionManager.GenerateServerSeq(req.Openid)
-	if serverSeq == 0 {
-		// 无效的OpenID
-		return &pb.UpstreamResponse{
-			Code:        400,
-			Message:     "无效的OpenID",
-			Data:        []byte(fmt.Sprintf("OpenID %s 不存在或无效", req.Openid)),
-			ClientSeqId: req.ClientSeqId,
-			ServerSeqId: 0,
-		}, nil
-	}
-
-	log.Printf("为 OpenID: %s 生成服务端序号: %d", req.Openid, serverSeq)
+	log.Printf("收到业务请求 - 会话: %s, 动作: %s", req.SessionId, req.Action)
 
 	// 根据动作类型处理不同的业务逻辑
-	var response *pb.UpstreamResponse
-	var err error
-
 	switch req.Action {
 	case "echo":
-		response, err = s.handleEcho(ctx, req)
+		return s.handleEcho(ctx, req)
 	case "time":
-		response, err = s.handleTime(ctx, req)
+		return s.handleTime(ctx, req)
 	case "hello":
-		response, err = s.handleHello(ctx, req)
+		return s.handleHello(ctx, req)
 	case "calculate":
-		response, err = s.handleCalculate(ctx, req)
+		return s.handleCalculate(ctx, req)
 	case "status":
-		response, err = s.handleStatus(ctx, req)
-	case "session_info":
-		response, err = s.handleSessionInfo(ctx, req)
+		return s.handleStatus(ctx, req)
 	case "broadcast":
-		response, err = s.handleBroadcastCommand(ctx, req)
+		return s.handleBroadcastCommand(ctx, req)
 	default:
-		response, err = s.handleDefault(ctx, req)
+		return s.handleDefault(ctx, req)
 	}
-
-	// 设置序列号信息
-	if response != nil {
-		response.ClientSeqId = req.ClientSeqId
-		response.ServerSeqId = serverSeq
-	}
-
-	return response, err
 }
 
 // GetStatus 获取服务状态
@@ -373,54 +335,6 @@ func (s *Server) handleStatus(ctx context.Context, req *pb.UpstreamRequest) (*pb
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"uptime":       uptime.String(),
-		},
-	}, nil
-}
-
-// handleSessionInfo 处理会话信息查询请求
-func (s *Server) handleSessionInfo(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
-	// 获取会话统计信息
-	sessionStats := s.sessionManager.GetSessionStats()
-
-	// 获取特定会话信息
-	sessionInfo := s.sessionManager.GetSessionInfo(req.Openid)
-
-	// 获取所有有效的OpenID
-	validOpenIDs := s.sessionManager.GetAllValidOpenIDs()
-
-	statusInfo := fmt.Sprintf(`会话管理器状态:
-总会话数: %v
-活跃会话数: %v
-会话TTL: %v分钟
-
-当前OpenID (%s) 信息:
-存在: %v
-服务端序号: %v
-创建时间: %v
-最后活动: %v
-空闲时间: %vs
-
-有效OpenID范围: %s 到 %s (共%d个)
-`,
-		sessionStats["total_sessions"],
-		sessionStats["active_sessions"],
-		sessionStats["session_ttl_minutes"],
-		req.Openid,
-		sessionInfo["exists"],
-		sessionInfo["server_seq"],
-		sessionInfo["create_time"],
-		sessionInfo["last_activity"],
-		sessionInfo["idle_seconds"],
-		validOpenIDs[0],
-		validOpenIDs[len(validOpenIDs)-1],
-		len(validOpenIDs))
-
-	return &pb.UpstreamResponse{
-		Code:    200,
-		Message: "会话信息查询成功",
-		Data:    []byte(statusInfo),
-		Headers: map[string]string{
-			"content-type": "text/plain",
 		},
 	}, nil
 }

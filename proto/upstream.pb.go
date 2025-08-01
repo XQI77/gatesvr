@@ -21,16 +21,66 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// 定义 Notify 消息与 Response 的同步关系枚举
+type NotifySyncHint int32
+
+const (
+	NotifySyncHint_NSH_IMMEDIATELY     NotifySyncHint = 0 // 默认值，立即下发
+	NotifySyncHint_NSH_BEFORE_RESPONSE NotifySyncHint = 1 // 在指定 response 之前下发
+	NotifySyncHint_NSH_AFTER_RESPONSE  NotifySyncHint = 2 // 在指定 response 之后下发
+)
+
+// Enum value maps for NotifySyncHint.
+var (
+	NotifySyncHint_name = map[int32]string{
+		0: "NSH_IMMEDIATELY",
+		1: "NSH_BEFORE_RESPONSE",
+		2: "NSH_AFTER_RESPONSE",
+	}
+	NotifySyncHint_value = map[string]int32{
+		"NSH_IMMEDIATELY":     0,
+		"NSH_BEFORE_RESPONSE": 1,
+		"NSH_AFTER_RESPONSE":  2,
+	}
+)
+
+func (x NotifySyncHint) Enum() *NotifySyncHint {
+	p := new(NotifySyncHint)
+	*p = x
+	return p
+}
+
+func (x NotifySyncHint) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotifySyncHint) Descriptor() protoreflect.EnumDescriptor {
+	return file_upstream_proto_enumTypes[0].Descriptor()
+}
+
+func (NotifySyncHint) Type() protoreflect.EnumType {
+	return &file_upstream_proto_enumTypes[0]
+}
+
+func (x NotifySyncHint) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotifySyncHint.Descriptor instead.
+func (NotifySyncHint) EnumDescriptor() ([]byte, []int) {
+	return file_upstream_proto_rawDescGZIP(), []int{0}
+}
+
 // 上游请求消息
 type UpstreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`                                                      // 会话ID
-	Openid        string                 `protobuf:"bytes,2,opt,name=openid,proto3" json:"openid,omitempty"`                                                                             // (新增) 用户的唯一标识
+	Openid        string                 `protobuf:"bytes,2,opt,name=openid,proto3" json:"openid,omitempty"`                                                                             // 用户的唯一标识
 	Action        string                 `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`                                                                             // 操作类型
 	Params        map[string]string      `protobuf:"bytes,4,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`   // 参数
 	Data          []byte                 `protobuf:"bytes,5,opt,name=data,proto3" json:"data,omitempty"`                                                                                 // 原始数据
 	Headers       map[string]string      `protobuf:"bytes,6,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 请求头
-	ClientSeqId   uint64                 `protobuf:"varint,7,opt,name=client_seq_id,json=clientSeqId,proto3" json:"client_seq_id,omitempty"`                                             // 客户端序列号
+	ClientSeqId   uint64                 `protobuf:"varint,7,opt,name=client_seq_id,json=clientSeqId,proto3" json:"client_seq_id,omitempty"`                                             // 客户端序列号, 同时作为请求的唯一标识 (grid)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -121,8 +171,7 @@ type UpstreamResponse struct {
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                                                                           // 响应消息
 	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`                                                                                 // 响应数据
 	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 响应头
-	ClientSeqId   uint64                 `protobuf:"varint,5,opt,name=client_seq_id,json=clientSeqId,proto3" json:"client_seq_id,omitempty"`                                             // 对应的客户端序列号
-	ServerSeqId   uint64                 `protobuf:"varint,6,opt,name=server_seq_id,json=serverSeqId,proto3" json:"server_seq_id,omitempty"`                                             // 上游服务生成的序列号
+	ClientSeqId   uint64                 `protobuf:"varint,5,opt,name=client_seq_id,json=clientSeqId,proto3" json:"client_seq_id,omitempty"`                                             // 对应的客户端序列号, 用于关联 notify
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -188,13 +237,6 @@ func (x *UpstreamResponse) GetHeaders() map[string]string {
 func (x *UpstreamResponse) GetClientSeqId() uint64 {
 	if x != nil {
 		return x.ClientSeqId
-	}
-	return 0
-}
-
-func (x *UpstreamResponse) GetServerSeqId() uint64 {
-	if x != nil {
-		return x.ServerSeqId
 	}
 	return 0
 }
@@ -313,18 +355,20 @@ func (x *StatusResponse) GetMetadata() map[string]string {
 	return nil
 }
 
-// 单播推送请求
+// 单播推送请求 (Notify 消息)
 type UnicastPushRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`                                                     // 目标类型: session, gid, openid
-	TargetId      string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`                                                           // 目标标识符
-	MsgType       string                 `protobuf:"bytes,3,opt,name=msg_type,json=msgType,proto3" json:"msg_type,omitempty"`                                                              // 消息类型
-	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`                                                                                 // 推送标题
-	Content       string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`                                                                             // 推送内容
-	Data          []byte                 `protobuf:"bytes,6,opt,name=data,proto3" json:"data,omitempty"`                                                                                   // 额外数据
-	Metadata      map[string]string      `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TargetType      string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`                                                     // 目标类型: session, gid, openid
+	TargetId        string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`                                                           // 目标标识符
+	MsgType         string                 `protobuf:"bytes,3,opt,name=msg_type,json=msgType,proto3" json:"msg_type,omitempty"`                                                              // 消息类型
+	Title           string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`                                                                                 // 推送标题
+	Content         string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`                                                                             // 推送内容
+	Data            []byte                 `protobuf:"bytes,6,opt,name=data,proto3" json:"data,omitempty"`                                                                                   // 额外数据
+	Metadata        map[string]string      `protobuf:"bytes,7,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
+	SyncHint        NotifySyncHint         `protobuf:"varint,8,opt,name=sync_hint,json=syncHint,proto3,enum=gatesvr.proto.NotifySyncHint" json:"sync_hint,omitempty"`                        // 同步提示，用于指定下发时机
+	BindClientSeqId uint64                 `protobuf:"varint,9,opt,name=bind_client_seq_id,json=bindClientSeqId,proto3" json:"bind_client_seq_id,omitempty"`                                 // 需要绑定的请求的 client_seq_id
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UnicastPushRequest) Reset() {
@@ -406,6 +450,20 @@ func (x *UnicastPushRequest) GetMetadata() map[string]string {
 	return nil
 }
 
+func (x *UnicastPushRequest) GetSyncHint() NotifySyncHint {
+	if x != nil {
+		return x.SyncHint
+	}
+	return NotifySyncHint_NSH_IMMEDIATELY
+}
+
+func (x *UnicastPushRequest) GetBindClientSeqId() uint64 {
+	if x != nil {
+		return x.BindClientSeqId
+	}
+	return 0
+}
+
 // 单播推送响应
 type UnicastPushResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -467,33 +525,33 @@ func (x *UnicastPushResponse) GetErrorCode() string {
 	return ""
 }
 
-// 批量单播推送请求
-type BatchUnicastPushRequest struct {
+// ADDED FOR BROADCAST: 广播请求消息
+// 注意：它不包含任何目标信息，因为它是发给所有人的
+type BroadcastRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Targets       []*UnicastTarget       `protobuf:"bytes,1,rep,name=targets,proto3" json:"targets,omitempty"`                                                                             // 目标列表
-	MsgType       string                 `protobuf:"bytes,2,opt,name=msg_type,json=msgType,proto3" json:"msg_type,omitempty"`                                                              // 消息类型
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`                                                                                 // 推送标题
-	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`                                                                             // 推送内容
-	Data          []byte                 `protobuf:"bytes,5,opt,name=data,proto3" json:"data,omitempty"`                                                                                   // 额外数据
-	Metadata      map[string]string      `protobuf:"bytes,6,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
+	MsgType       string                 `protobuf:"bytes,1,opt,name=msg_type,json=msgType,proto3" json:"msg_type,omitempty"`                                                              // 消息类型
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`                                                                                 // 推送标题
+	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`                                                                             // 推送内容
+	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`                                                                                   // 额外数据
+	Metadata      map[string]string      `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 元数据
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *BatchUnicastPushRequest) Reset() {
-	*x = BatchUnicastPushRequest{}
+func (x *BroadcastRequest) Reset() {
+	*x = BroadcastRequest{}
 	mi := &file_upstream_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *BatchUnicastPushRequest) String() string {
+func (x *BroadcastRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*BatchUnicastPushRequest) ProtoMessage() {}
+func (*BroadcastRequest) ProtoMessage() {}
 
-func (x *BatchUnicastPushRequest) ProtoReflect() protoreflect.Message {
+func (x *BroadcastRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_upstream_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -505,65 +563,111 @@ func (x *BatchUnicastPushRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use BatchUnicastPushRequest.ProtoReflect.Descriptor instead.
-func (*BatchUnicastPushRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use BroadcastRequest.ProtoReflect.Descriptor instead.
+func (*BroadcastRequest) Descriptor() ([]byte, []int) {
 	return file_upstream_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *BatchUnicastPushRequest) GetTargets() []*UnicastTarget {
-	if x != nil {
-		return x.Targets
-	}
-	return nil
-}
-
-func (x *BatchUnicastPushRequest) GetMsgType() string {
+func (x *BroadcastRequest) GetMsgType() string {
 	if x != nil {
 		return x.MsgType
 	}
 	return ""
 }
 
-func (x *BatchUnicastPushRequest) GetTitle() string {
+func (x *BroadcastRequest) GetTitle() string {
 	if x != nil {
 		return x.Title
 	}
 	return ""
 }
 
-func (x *BatchUnicastPushRequest) GetContent() string {
+func (x *BroadcastRequest) GetContent() string {
 	if x != nil {
 		return x.Content
 	}
 	return ""
 }
 
-func (x *BatchUnicastPushRequest) GetData() []byte {
+func (x *BroadcastRequest) GetData() []byte {
 	if x != nil {
 		return x.Data
 	}
 	return nil
 }
 
-func (x *BatchUnicastPushRequest) GetMetadata() map[string]string {
+func (x *BroadcastRequest) GetMetadata() map[string]string {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
+// ADDED FOR BROADCAST: 广播响应消息
+type BroadcastResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SentCount     int32                  `protobuf:"varint,1,opt,name=sent_count,json=sentCount,proto3" json:"sent_count,omitempty"` // 成功下发的客户端数量
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`                       // 响应消息，例如 "Broadcast initiated"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BroadcastResponse) Reset() {
+	*x = BroadcastResponse{}
+	mi := &file_upstream_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BroadcastResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BroadcastResponse) ProtoMessage() {}
+
+func (x *BroadcastResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_upstream_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BroadcastResponse.ProtoReflect.Descriptor instead.
+func (*BroadcastResponse) Descriptor() ([]byte, []int) {
+	return file_upstream_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *BroadcastResponse) GetSentCount() int32 {
+	if x != nil {
+		return x.SentCount
+	}
+	return 0
+}
+
+func (x *BroadcastResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 // 单播目标
 type UnicastTarget struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"` // 目标类型: session, gid, openid
-	TargetId      string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`       // 目标标识符
+	TargetType    string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	TargetId      string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UnicastTarget) Reset() {
 	*x = UnicastTarget{}
-	mi := &file_upstream_proto_msgTypes[7]
+	mi := &file_upstream_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -575,7 +679,7 @@ func (x *UnicastTarget) String() string {
 func (*UnicastTarget) ProtoMessage() {}
 
 func (x *UnicastTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[7]
+	mi := &file_upstream_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -588,7 +692,7 @@ func (x *UnicastTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnicastTarget.ProtoReflect.Descriptor instead.
 func (*UnicastTarget) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{7}
+	return file_upstream_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UnicastTarget) GetTargetType() string {
@@ -605,74 +709,13 @@ func (x *UnicastTarget) GetTargetId() string {
 	return ""
 }
 
-// 批量单播推送响应
-type BatchUnicastPushResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SuccessCount  int32                  `protobuf:"varint,1,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"` // 成功数量
-	TotalCount    int32                  `protobuf:"varint,2,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`       // 总数量
-	Results       []*UnicastResult       `protobuf:"bytes,3,rep,name=results,proto3" json:"results,omitempty"`                                // 详细结果
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *BatchUnicastPushResponse) Reset() {
-	*x = BatchUnicastPushResponse{}
-	mi := &file_upstream_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *BatchUnicastPushResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*BatchUnicastPushResponse) ProtoMessage() {}
-
-func (x *BatchUnicastPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use BatchUnicastPushResponse.ProtoReflect.Descriptor instead.
-func (*BatchUnicastPushResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *BatchUnicastPushResponse) GetSuccessCount() int32 {
-	if x != nil {
-		return x.SuccessCount
-	}
-	return 0
-}
-
-func (x *BatchUnicastPushResponse) GetTotalCount() int32 {
-	if x != nil {
-		return x.TotalCount
-	}
-	return 0
-}
-
-func (x *BatchUnicastPushResponse) GetResults() []*UnicastResult {
-	if x != nil {
-		return x.Results
-	}
-	return nil
-}
-
 // 单播结果
 type UnicastResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`       // 目标类型
-	TargetId      string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`             // 目标标识符
-	Success       bool                   `protobuf:"varint,3,opt,name=success,proto3" json:"success,omitempty"`                              // 是否成功
-	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // 错误信息（如果有）
+	TargetType    string                 `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	TargetId      string                 `protobuf:"bytes,2,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	Success       bool                   `protobuf:"varint,3,opt,name=success,proto3" json:"success,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -754,14 +797,13 @@ const file_upstream_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfc\x01\n" +
 	"\x10UpstreamResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12F\n" +
 	"\aheaders\x18\x04 \x03(\v2,.gatesvr.proto.UpstreamResponse.HeadersEntryR\aheaders\x12\"\n" +
-	"\rclient_seq_id\x18\x05 \x01(\x04R\vclientSeqId\x12\"\n" +
-	"\rserver_seq_id\x18\x06 \x01(\x04R\vserverSeqId\x1a:\n" +
+	"\rclient_seq_id\x18\x05 \x01(\x04R\vclientSeqId\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"2\n" +
@@ -774,7 +816,7 @@ const file_upstream_proto_rawDesc = "" +
 	"\bmetadata\x18\x04 \x03(\v2+.gatesvr.proto.StatusResponse.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbb\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa4\x03\n" +
 	"\x12UnicastPushRequest\x12\x1f\n" +
 	"\vtarget_type\x18\x01 \x01(\tR\n" +
 	"targetType\x12\x1b\n" +
@@ -783,7 +825,9 @@ const file_upstream_proto_rawDesc = "" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x05 \x01(\tR\acontent\x12\x12\n" +
 	"\x04data\x18\x06 \x01(\fR\x04data\x12K\n" +
-	"\bmetadata\x18\a \x03(\v2/.gatesvr.proto.UnicastPushRequest.MetadataEntryR\bmetadata\x1a;\n" +
+	"\bmetadata\x18\a \x03(\v2/.gatesvr.proto.UnicastPushRequest.MetadataEntryR\bmetadata\x12:\n" +
+	"\tsync_hint\x18\b \x01(\x0e2\x1d.gatesvr.proto.NotifySyncHintR\bsyncHint\x12+\n" +
+	"\x12bind_client_seq_id\x18\t \x01(\x04R\x0fbindClientSeqId\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"h\n" +
@@ -791,38 +835,40 @@ const file_upstream_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1d\n" +
 	"\n" +
-	"error_code\x18\x03 \x01(\tR\terrorCode\"\xbf\x02\n" +
-	"\x17BatchUnicastPushRequest\x126\n" +
-	"\atargets\x18\x01 \x03(\v2\x1c.gatesvr.proto.UnicastTargetR\atargets\x12\x19\n" +
-	"\bmsg_type\x18\x02 \x01(\tR\amsgType\x12\x14\n" +
-	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\tR\acontent\x12\x12\n" +
-	"\x04data\x18\x05 \x01(\fR\x04data\x12P\n" +
-	"\bmetadata\x18\x06 \x03(\v24.gatesvr.proto.BatchUnicastPushRequest.MetadataEntryR\bmetadata\x1a;\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\"\xf9\x01\n" +
+	"\x10BroadcastRequest\x12\x19\n" +
+	"\bmsg_type\x18\x01 \x01(\tR\amsgType\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\x12\x12\n" +
+	"\x04data\x18\x04 \x01(\fR\x04data\x12I\n" +
+	"\bmetadata\x18\x05 \x03(\v2-.gatesvr.proto.BroadcastRequest.MetadataEntryR\bmetadata\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"L\n" +
+	"\x11BroadcastResponse\x12\x1d\n" +
+	"\n" +
+	"sent_count\x18\x01 \x01(\x05R\tsentCount\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"M\n" +
 	"\rUnicastTarget\x12\x1f\n" +
 	"\vtarget_type\x18\x01 \x01(\tR\n" +
 	"targetType\x12\x1b\n" +
-	"\ttarget_id\x18\x02 \x01(\tR\btargetId\"\x98\x01\n" +
-	"\x18BatchUnicastPushResponse\x12#\n" +
-	"\rsuccess_count\x18\x01 \x01(\x05R\fsuccessCount\x12\x1f\n" +
-	"\vtotal_count\x18\x02 \x01(\x05R\n" +
-	"totalCount\x126\n" +
-	"\aresults\x18\x03 \x03(\v2\x1c.gatesvr.proto.UnicastResultR\aresults\"\x8c\x01\n" +
+	"\ttarget_id\x18\x02 \x01(\tR\btargetId\"\x8c\x01\n" +
 	"\rUnicastResult\x12\x1f\n" +
 	"\vtarget_type\x18\x01 \x01(\tR\n" +
 	"targetType\x12\x1b\n" +
 	"\ttarget_id\x18\x02 \x01(\tR\btargetId\x12\x18\n" +
 	"\asuccess\x18\x03 \x01(\bR\asuccess\x12#\n" +
-	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage2\xae\x01\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage*V\n" +
+	"\x0eNotifySyncHint\x12\x13\n" +
+	"\x0fNSH_IMMEDIATELY\x10\x00\x12\x17\n" +
+	"\x13NSH_BEFORE_RESPONSE\x10\x01\x12\x16\n" +
+	"\x12NSH_AFTER_RESPONSE\x10\x022\xae\x01\n" +
 	"\x0fUpstreamService\x12Q\n" +
 	"\x0eProcessRequest\x12\x1e.gatesvr.proto.UpstreamRequest\x1a\x1f.gatesvr.proto.UpstreamResponse\x12H\n" +
-	"\tGetStatus\x12\x1c.gatesvr.proto.StatusRequest\x1a\x1d.gatesvr.proto.StatusResponse2\xce\x01\n" +
+	"\tGetStatus\x12\x1c.gatesvr.proto.StatusRequest\x1a\x1d.gatesvr.proto.StatusResponse2\xc0\x01\n" +
 	"\x0eGatewayService\x12U\n" +
-	"\fPushToClient\x12!.gatesvr.proto.UnicastPushRequest\x1a\".gatesvr.proto.UnicastPushResponse\x12e\n" +
-	"\x12BatchPushToClients\x12&.gatesvr.proto.BatchUnicastPushRequest\x1a'.gatesvr.proto.BatchUnicastPushResponseB\x0fZ\rgatesvr/protob\x06proto3"
+	"\fPushToClient\x12!.gatesvr.proto.UnicastPushRequest\x1a\".gatesvr.proto.UnicastPushResponse\x12W\n" +
+	"\x12BroadcastToClients\x12\x1f.gatesvr.proto.BroadcastRequest\x1a .gatesvr.proto.BroadcastResponseB\x0fZ\rgatesvr/protob\x06proto3"
 
 var (
 	file_upstream_proto_rawDescOnce sync.Once
@@ -836,47 +882,48 @@ func file_upstream_proto_rawDescGZIP() []byte {
 	return file_upstream_proto_rawDescData
 }
 
+var file_upstream_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_upstream_proto_goTypes = []any{
-	(*UpstreamRequest)(nil),          // 0: gatesvr.proto.UpstreamRequest
-	(*UpstreamResponse)(nil),         // 1: gatesvr.proto.UpstreamResponse
-	(*StatusRequest)(nil),            // 2: gatesvr.proto.StatusRequest
-	(*StatusResponse)(nil),           // 3: gatesvr.proto.StatusResponse
-	(*UnicastPushRequest)(nil),       // 4: gatesvr.proto.UnicastPushRequest
-	(*UnicastPushResponse)(nil),      // 5: gatesvr.proto.UnicastPushResponse
-	(*BatchUnicastPushRequest)(nil),  // 6: gatesvr.proto.BatchUnicastPushRequest
-	(*UnicastTarget)(nil),            // 7: gatesvr.proto.UnicastTarget
-	(*BatchUnicastPushResponse)(nil), // 8: gatesvr.proto.BatchUnicastPushResponse
-	(*UnicastResult)(nil),            // 9: gatesvr.proto.UnicastResult
-	nil,                              // 10: gatesvr.proto.UpstreamRequest.ParamsEntry
-	nil,                              // 11: gatesvr.proto.UpstreamRequest.HeadersEntry
-	nil,                              // 12: gatesvr.proto.UpstreamResponse.HeadersEntry
-	nil,                              // 13: gatesvr.proto.StatusResponse.MetadataEntry
-	nil,                              // 14: gatesvr.proto.UnicastPushRequest.MetadataEntry
-	nil,                              // 15: gatesvr.proto.BatchUnicastPushRequest.MetadataEntry
+	(NotifySyncHint)(0),         // 0: gatesvr.proto.NotifySyncHint
+	(*UpstreamRequest)(nil),     // 1: gatesvr.proto.UpstreamRequest
+	(*UpstreamResponse)(nil),    // 2: gatesvr.proto.UpstreamResponse
+	(*StatusRequest)(nil),       // 3: gatesvr.proto.StatusRequest
+	(*StatusResponse)(nil),      // 4: gatesvr.proto.StatusResponse
+	(*UnicastPushRequest)(nil),  // 5: gatesvr.proto.UnicastPushRequest
+	(*UnicastPushResponse)(nil), // 6: gatesvr.proto.UnicastPushResponse
+	(*BroadcastRequest)(nil),    // 7: gatesvr.proto.BroadcastRequest
+	(*BroadcastResponse)(nil),   // 8: gatesvr.proto.BroadcastResponse
+	(*UnicastTarget)(nil),       // 9: gatesvr.proto.UnicastTarget
+	(*UnicastResult)(nil),       // 10: gatesvr.proto.UnicastResult
+	nil,                         // 11: gatesvr.proto.UpstreamRequest.ParamsEntry
+	nil,                         // 12: gatesvr.proto.UpstreamRequest.HeadersEntry
+	nil,                         // 13: gatesvr.proto.UpstreamResponse.HeadersEntry
+	nil,                         // 14: gatesvr.proto.StatusResponse.MetadataEntry
+	nil,                         // 15: gatesvr.proto.UnicastPushRequest.MetadataEntry
+	nil,                         // 16: gatesvr.proto.BroadcastRequest.MetadataEntry
 }
 var file_upstream_proto_depIdxs = []int32{
-	10, // 0: gatesvr.proto.UpstreamRequest.params:type_name -> gatesvr.proto.UpstreamRequest.ParamsEntry
-	11, // 1: gatesvr.proto.UpstreamRequest.headers:type_name -> gatesvr.proto.UpstreamRequest.HeadersEntry
-	12, // 2: gatesvr.proto.UpstreamResponse.headers:type_name -> gatesvr.proto.UpstreamResponse.HeadersEntry
-	13, // 3: gatesvr.proto.StatusResponse.metadata:type_name -> gatesvr.proto.StatusResponse.MetadataEntry
-	14, // 4: gatesvr.proto.UnicastPushRequest.metadata:type_name -> gatesvr.proto.UnicastPushRequest.MetadataEntry
-	7,  // 5: gatesvr.proto.BatchUnicastPushRequest.targets:type_name -> gatesvr.proto.UnicastTarget
-	15, // 6: gatesvr.proto.BatchUnicastPushRequest.metadata:type_name -> gatesvr.proto.BatchUnicastPushRequest.MetadataEntry
-	9,  // 7: gatesvr.proto.BatchUnicastPushResponse.results:type_name -> gatesvr.proto.UnicastResult
-	0,  // 8: gatesvr.proto.UpstreamService.ProcessRequest:input_type -> gatesvr.proto.UpstreamRequest
-	2,  // 9: gatesvr.proto.UpstreamService.GetStatus:input_type -> gatesvr.proto.StatusRequest
-	4,  // 10: gatesvr.proto.GatewayService.PushToClient:input_type -> gatesvr.proto.UnicastPushRequest
-	6,  // 11: gatesvr.proto.GatewayService.BatchPushToClients:input_type -> gatesvr.proto.BatchUnicastPushRequest
-	1,  // 12: gatesvr.proto.UpstreamService.ProcessRequest:output_type -> gatesvr.proto.UpstreamResponse
-	3,  // 13: gatesvr.proto.UpstreamService.GetStatus:output_type -> gatesvr.proto.StatusResponse
-	5,  // 14: gatesvr.proto.GatewayService.PushToClient:output_type -> gatesvr.proto.UnicastPushResponse
-	8,  // 15: gatesvr.proto.GatewayService.BatchPushToClients:output_type -> gatesvr.proto.BatchUnicastPushResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	11, // 0: gatesvr.proto.UpstreamRequest.params:type_name -> gatesvr.proto.UpstreamRequest.ParamsEntry
+	12, // 1: gatesvr.proto.UpstreamRequest.headers:type_name -> gatesvr.proto.UpstreamRequest.HeadersEntry
+	13, // 2: gatesvr.proto.UpstreamResponse.headers:type_name -> gatesvr.proto.UpstreamResponse.HeadersEntry
+	14, // 3: gatesvr.proto.StatusResponse.metadata:type_name -> gatesvr.proto.StatusResponse.MetadataEntry
+	15, // 4: gatesvr.proto.UnicastPushRequest.metadata:type_name -> gatesvr.proto.UnicastPushRequest.MetadataEntry
+	0,  // 5: gatesvr.proto.UnicastPushRequest.sync_hint:type_name -> gatesvr.proto.NotifySyncHint
+	16, // 6: gatesvr.proto.BroadcastRequest.metadata:type_name -> gatesvr.proto.BroadcastRequest.MetadataEntry
+	1,  // 7: gatesvr.proto.UpstreamService.ProcessRequest:input_type -> gatesvr.proto.UpstreamRequest
+	3,  // 8: gatesvr.proto.UpstreamService.GetStatus:input_type -> gatesvr.proto.StatusRequest
+	5,  // 9: gatesvr.proto.GatewayService.PushToClient:input_type -> gatesvr.proto.UnicastPushRequest
+	7,  // 10: gatesvr.proto.GatewayService.BroadcastToClients:input_type -> gatesvr.proto.BroadcastRequest
+	2,  // 11: gatesvr.proto.UpstreamService.ProcessRequest:output_type -> gatesvr.proto.UpstreamResponse
+	4,  // 12: gatesvr.proto.UpstreamService.GetStatus:output_type -> gatesvr.proto.StatusResponse
+	6,  // 13: gatesvr.proto.GatewayService.PushToClient:output_type -> gatesvr.proto.UnicastPushResponse
+	8,  // 14: gatesvr.proto.GatewayService.BroadcastToClients:output_type -> gatesvr.proto.BroadcastResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_upstream_proto_init() }
@@ -889,13 +936,14 @@ func file_upstream_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_upstream_proto_rawDesc), len(file_upstream_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
 		GoTypes:           file_upstream_proto_goTypes,
 		DependencyIndexes: file_upstream_proto_depIdxs,
+		EnumInfos:         file_upstream_proto_enumTypes,
 		MessageInfos:      file_upstream_proto_msgTypes,
 	}.Build()
 	File_upstream_proto = out.File

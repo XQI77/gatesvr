@@ -103,6 +103,9 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 
 	// 初始化有序消息队列
 	newSession.orderedQueue = NewOrderedMessageQueue(sessionID, 1000) // 最大队列长度1000
+	
+	// 初始化消息排序管理器 - 新增
+	newSession.orderingManager = NewMessageOrderingManager()
 
 	if isReconnect && oldSession != nil {
 		// 重连处理：继承旧会话数据

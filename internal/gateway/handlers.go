@@ -128,10 +128,17 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		}
 	}
 
-	// 发送业务响应（使用有序发送器）
+	// 发送业务响应（使用有序发送器，gatesvr统一管理序列号）
 	if err := s.orderedSender.SendBusinessResponse(sess, req.MsgId, upstreamResp.Code, upstreamResp.Message, upstreamResp.Data, upstreamResp.Headers); err != nil {
 		log.Printf("发送业务响应失败: %v", err)
 		return false
+	}
+	
+	// 如果需要处理绑定的notify消息，使用保序机制
+	grid := uint32(req.SeqId)
+	if err := s.processBoundNotifies(sess, grid); err != nil {
+		log.Printf("处理绑定notify消息失败: %v", err)
+		// 不返回错误，因为主响应已经发送成功
 	}
 
 	log.Printf("处理业务请求 - 动作: %s, 会话: %s, 响应码: %d, 时延: 解析=%.2fms, 上游=%.2fms",
@@ -429,4 +436,67 @@ func (s *Server) handleStop(sess *session.Session, req *pb.ClientRequest) bool {
 
 	// 断开连接请求处理完成后，连接将被关闭，返回false表示连接应该结束
 	return false
+}
+
+// processBoundNotifies 处理绑定在response前后的notify消息
+func (s *Server) processBoundNotifies(sess *session.Session, grid uint32) error {
+	// 发送绑定在response之前的notify消息
+	if err := s.sendBeforeNotifies(sess, grid); err != nil {
+		log.Printf("发送before-notify失败: %v", err)
+		return err
+	}
+	
+	// 发送绑定在response之后的notify消息
+	if err := s.sendAfterNotifies(sess, grid); err != nil {
+		log.Printf("发送after-notify失败: %v", err)
+		return err
+	}
+	
+	return nil
+}
+
+// sendBeforeNotifies 发送绑定在response之前的notify消息
+func (s *Server) sendBeforeNotifies(sess *session.Session, grid uint32) error {
+	if sess.GetOrderingManager() == nil {
+		return nil
+	}
+	
+	beforeNotifies := sess.GetOrderingManager().GetAndRemoveBeforeNotifies(grid)
+	if len(beforeNotifies) == 0 {
+		return nil
+	}
+	
+	for _, notifyItem := range beforeNotifies {
+		// 使用有序发送器发送notify，gatesvr自动分配序列号
+		if err := s.orderedSender.PushBusinessData(sess, notifyItem.NotifyData); err != nil {
+			log.Printf("发送before-notify失败 - 会话: %s, 错误: %v", sess.ID, err)
+			return err
+		}
+		log.Printf("发送before-notify成功 - 会话: %s, 类型: %s", sess.ID, notifyItem.MsgType)
+	}
+	
+	return nil
+}
+
+// sendAfterNotifies 发送绑定在response之后的notify消息
+func (s *Server) sendAfterNotifies(sess *session.Session, grid uint32) error {
+	if sess.GetOrderingManager() == nil {
+		return nil
+	}
+	
+	afterNotifies := sess.GetOrderingManager().GetAndRemoveAfterNotifies(grid)
+	if len(afterNotifies) == 0 {
+		return nil
+	}
+	
+	for _, notifyItem := range afterNotifies {
+		// 使用有序发送器发送notify，gatesvr自动分配序列号
+		if err := s.orderedSender.PushBusinessData(sess, notifyItem.NotifyData); err != nil {
+			log.Printf("发送after-notify失败 - 会话: %s, 错误: %v", sess.ID, err)
+			return err
+		}
+		log.Printf("发送after-notify成功 - 会话: %s, 类型: %s", sess.ID, notifyItem.MsgType)
+	}
+	
+	return nil
 }

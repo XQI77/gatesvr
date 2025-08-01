@@ -168,7 +168,7 @@ var UpstreamService_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	GatewayService_PushToClient_FullMethodName       = "/gatesvr.proto.GatewayService/PushToClient"
-	GatewayService_BatchPushToClients_FullMethodName = "/gatesvr.proto.GatewayService/BatchPushToClients"
+	GatewayService_BroadcastToClients_FullMethodName = "/gatesvr.proto.GatewayService/BroadcastToClients"
 )
 
 // GatewayServiceClient is the client API for GatewayService service.
@@ -179,8 +179,8 @@ const (
 type GatewayServiceClient interface {
 	// 单播推送消息到指定客户端
 	PushToClient(ctx context.Context, in *UnicastPushRequest, opts ...grpc.CallOption) (*UnicastPushResponse, error)
-	// 批量单播推送消息
-	BatchPushToClients(ctx context.Context, in *BatchUnicastPushRequest, opts ...grpc.CallOption) (*BatchUnicastPushResponse, error)
+	// ADDED FOR BROADCAST: 广播消息到所有在线客户端
+	BroadcastToClients(ctx context.Context, in *BroadcastRequest, opts ...grpc.CallOption) (*BroadcastResponse, error)
 }
 
 type gatewayServiceClient struct {
@@ -201,10 +201,10 @@ func (c *gatewayServiceClient) PushToClient(ctx context.Context, in *UnicastPush
 	return out, nil
 }
 
-func (c *gatewayServiceClient) BatchPushToClients(ctx context.Context, in *BatchUnicastPushRequest, opts ...grpc.CallOption) (*BatchUnicastPushResponse, error) {
+func (c *gatewayServiceClient) BroadcastToClients(ctx context.Context, in *BroadcastRequest, opts ...grpc.CallOption) (*BroadcastResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BatchUnicastPushResponse)
-	err := c.cc.Invoke(ctx, GatewayService_BatchPushToClients_FullMethodName, in, out, cOpts...)
+	out := new(BroadcastResponse)
+	err := c.cc.Invoke(ctx, GatewayService_BroadcastToClients_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +219,8 @@ func (c *gatewayServiceClient) BatchPushToClients(ctx context.Context, in *Batch
 type GatewayServiceServer interface {
 	// 单播推送消息到指定客户端
 	PushToClient(context.Context, *UnicastPushRequest) (*UnicastPushResponse, error)
-	// 批量单播推送消息
-	BatchPushToClients(context.Context, *BatchUnicastPushRequest) (*BatchUnicastPushResponse, error)
+	// ADDED FOR BROADCAST: 广播消息到所有在线客户端
+	BroadcastToClients(context.Context, *BroadcastRequest) (*BroadcastResponse, error)
 	mustEmbedUnimplementedGatewayServiceServer()
 }
 
@@ -234,8 +234,8 @@ type UnimplementedGatewayServiceServer struct{}
 func (UnimplementedGatewayServiceServer) PushToClient(context.Context, *UnicastPushRequest) (*UnicastPushResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PushToClient not implemented")
 }
-func (UnimplementedGatewayServiceServer) BatchPushToClients(context.Context, *BatchUnicastPushRequest) (*BatchUnicastPushResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BatchPushToClients not implemented")
+func (UnimplementedGatewayServiceServer) BroadcastToClients(context.Context, *BroadcastRequest) (*BroadcastResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BroadcastToClients not implemented")
 }
 func (UnimplementedGatewayServiceServer) mustEmbedUnimplementedGatewayServiceServer() {}
 func (UnimplementedGatewayServiceServer) testEmbeddedByValue()                        {}
@@ -276,20 +276,20 @@ func _GatewayService_PushToClient_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _GatewayService_BatchPushToClients_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BatchUnicastPushRequest)
+func _GatewayService_BroadcastToClients_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BroadcastRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GatewayServiceServer).BatchPushToClients(ctx, in)
+		return srv.(GatewayServiceServer).BroadcastToClients(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: GatewayService_BatchPushToClients_FullMethodName,
+		FullMethod: GatewayService_BroadcastToClients_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GatewayServiceServer).BatchPushToClients(ctx, req.(*BatchUnicastPushRequest))
+		return srv.(GatewayServiceServer).BroadcastToClients(ctx, req.(*BroadcastRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -306,8 +306,8 @@ var GatewayService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _GatewayService_PushToClient_Handler,
 		},
 		{
-			MethodName: "BatchPushToClients",
-			Handler:    _GatewayService_BatchPushToClients_Handler,
+			MethodName: "BroadcastToClients",
+			Handler:    _GatewayService_BroadcastToClients_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

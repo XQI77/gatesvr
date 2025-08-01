@@ -4,6 +4,13 @@ package gatesvr.proto;
 
 option go_package = "gatesvr/proto";
 
+// 定义 Notify 消息与 Response 的同步关系枚举
+enum NotifySyncHint {
+  NSH_IMMEDIATELY = 0;     // 默认值，立即下发
+  NSH_BEFORE_RESPONSE = 1; // 在指定 response 之前下发
+  NSH_AFTER_RESPONSE = 2;  // 在指定 response 之后下发
+}
+
 // 上游服务接口定义
 service UpstreamService {
   // 处理业务请求
@@ -17,20 +24,20 @@ service UpstreamService {
 service GatewayService {
   // 单播推送消息到指定客户端
   rpc PushToClient(UnicastPushRequest) returns (UnicastPushResponse);
-  
-  // 批量单播推送消息
-  rpc BatchPushToClients(BatchUnicastPushRequest) returns (BatchUnicastPushResponse);
+
+  // ADDED FOR BROADCAST: 广播消息到所有在线客户端
+  rpc BroadcastToClients(BroadcastRequest) returns (BroadcastResponse);
 }
 
 // 上游请求消息
 message UpstreamRequest {
   string session_id = 1;       // 会话ID
-  string openid = 2;           // (新增) 用户的唯一标识
+  string openid = 2;           // 用户的唯一标识
   string action = 3;           // 操作类型
   map<string, string> params = 4; // 参数
   bytes data = 5;              // 原始数据
   map<string, string> headers = 6; // 请求头
-  uint64 client_seq_id = 7;    // 客户端序列号
+  uint64 client_seq_id = 7;    // 客户端序列号, 同时作为请求的唯一标识 (grid)
 }
 
 // 上游响应消息
@@ -39,8 +46,7 @@ message UpstreamResponse {
   string message = 2;          // 响应消息
   bytes data = 3;              // 响应数据
   map<string, string> headers = 4; // 响应头
-  uint64 client_seq_id = 5;    // 对应的客户端序列号
-  uint64 server_seq_id = 6;    // 上游服务生成的序列号
+  uint64 client_seq_id = 5;    // 对应的客户端序列号, 用于关联 notify
 }
 
 // 状态请求消息
@@ -56,7 +62,7 @@ message StatusResponse {
   map<string, string> metadata = 4; // 额外元数据
 }
 
-// 单播推送请求
+// 单播推送请求 (Notify 消息)
 message UnicastPushRequest {
   string target_type = 1;      // 目标类型: session, gid, openid
   string target_id = 2;        // 目标标识符
@@ -65,6 +71,8 @@ message UnicastPushRequest {
   string content = 5;          // 推送内容
   bytes data = 6;              // 额外数据
   map<string, string> metadata = 7; // 元数据
+  NotifySyncHint sync_hint = 8;     // 同步提示，用于指定下发时机
+  uint64 bind_client_seq_id = 9;    // 需要绑定的请求的 client_seq_id
 }
 
 // 单播推送响应
@@ -74,33 +82,33 @@ message UnicastPushResponse {
   string error_code = 3;       // 错误代码（如果有）
 }
 
-// 批量单播推送请求
-message BatchUnicastPushRequest {
-  repeated UnicastTarget targets = 1; // 目标列表
-  string msg_type = 2;         // 消息类型
-  string title = 3;            // 推送标题
-  string content = 4;          // 推送内容
-  bytes data = 5;              // 额外数据
-  map<string, string> metadata = 6; // 元数据
+// ADDED FOR BROADCAST: 广播请求消息
+// 注意：它不包含任何目标信息，因为它是发给所有人的
+message BroadcastRequest {
+  string msg_type = 1;         // 消息类型
+  string title = 2;            // 推送标题
+  string content = 3;          // 推送内容
+  bytes data = 4;              // 额外数据
+  map<string, string> metadata = 5; // 元数据
+}
+
+// ADDED FOR BROADCAST: 广播响应消息
+message BroadcastResponse {
+  int32 sent_count = 1;      // 成功下发的客户端数量
+  string message = 2;        // 响应消息，例如 "Broadcast initiated"
 }
 
 // 单播目标
 message UnicastTarget {
-  string target_type = 1;      // 目标类型: session, gid, openid
-  string target_id = 2;        // 目标标识符
+  string target_type = 1;
+  string target_id = 2;
 }
 
-// 批量单播推送响应
-message BatchUnicastPushResponse {
-  int32 success_count = 1;     // 成功数量
-  int32 total_count = 2;       // 总数量
-  repeated UnicastResult results = 3; // 详细结果
-}
 
 // 单播结果
 message UnicastResult {
-  string target_type = 1;      // 目标类型
-  string target_id = 2;        // 目标标识符
-  bool success = 3;            // 是否成功
-  string error_message = 4;    // 错误信息（如果有）
+  string target_type = 1;
+  string target_id = 2;
+  bool success = 3;
+  string error_message = 4;
 }

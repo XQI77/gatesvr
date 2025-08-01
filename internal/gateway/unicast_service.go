@@ -10,23 +10,23 @@ import (
 	pb "gatesvr/proto"
 )
 
-// PushToClient 实现单播推送到指定客户端
+// PushToClient 实现单播推送到指定客户端 - 支持消息保序机制
 func (s *Server) PushToClient(ctx context.Context, req *pb.UnicastPushRequest) (*pb.UnicastPushResponse, error) {
-	log.Printf("收到单播推送请求 - 目标类型: %s, 目标ID: %s, 消息类型: %s",
-		req.TargetType, req.TargetId, req.MsgType)
+	log.Printf("收到单播推送请求 - 目标类型: %s, 目标ID: %s, 消息类型: %s, 同步提示: %v",
+		req.TargetType, req.TargetId, req.MsgType, req.SyncHint)
 
 	var err error
 	switch req.TargetType {
 	case "session":
-		err = s.handleUnicastToSession(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
+		err = s.handleUnicastToSessionWithOrdering(req)
 	case "gid":
 		if gid, parseErr := strconv.ParseInt(req.TargetId, 10, 64); parseErr == nil {
-			err = s.handleUnicastToGID(gid, req.MsgType, req.Title, req.Content, req.Data)
+			err = s.handleUnicastToGIDWithOrdering(gid, req)
 		} else {
 			err = fmt.Errorf("无效的GID: %s", req.TargetId)
 		}
 	case "openid":
-		err = s.handleUnicastToOpenID(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
+		err = s.handleUnicastToOpenIDWithOrdering(req)
 	default:
 		err = fmt.Errorf("不支持的推送目标类型: %s", req.TargetType)
 	}
@@ -171,53 +171,122 @@ func (s *Server) cacheMessageForOpenID(openID, msgType, title, content string, d
 	return nil // 暂时返回成功
 }
 
-// BatchPushToClients 实现批量单播推送
-func (s *Server) BatchPushToClients(ctx context.Context, req *pb.BatchUnicastPushRequest) (*pb.BatchUnicastPushResponse, error) {
-	results := make([]*pb.UnicastResult, 0, len(req.Targets))
-	successCount := int32(0)
-	totalCount := int32(len(req.Targets))
+// ======= 支持消息保序机制的新处理函数 =======
 
-	for _, target := range req.Targets {
-		result := &pb.UnicastResult{
-			TargetType: target.TargetType,
-			TargetId:   target.TargetId,
-		}
-
-		// 构造单播请求
-		unicastReq := &pb.UnicastPushRequest{
-			TargetType: target.TargetType,
-			TargetId:   target.TargetId,
-			MsgType:    req.MsgType,
-			Title:      req.Title,
-			Content:    req.Content,
-			Data:       req.Data,
-			Metadata:   req.Metadata,
-		}
-
-		// 执行单播推送
-		resp, err := s.PushToClient(ctx, unicastReq)
-		if err == nil && resp.Success {
-			result.Success = true
-			successCount++
-		} else {
-			result.Success = false
-			if err != nil {
-				result.ErrorMessage = err.Error()
-			} else {
-				result.ErrorMessage = resp.Message
-			}
-		}
-
-		results = append(results, result)
+// handleUnicastToSessionWithOrdering 使用消息保序机制处理到会话的单播推送
+func (s *Server) handleUnicastToSessionWithOrdering(req *pb.UnicastPushRequest) error {
+	session, exists := s.sessionManager.GetSession(req.TargetId)
+	if !exists {
+		return fmt.Errorf("会话不存在: %s", req.TargetId)
 	}
 
-	log.Printf("批量单播推送完成 - 总数: %d, 成功: %d", totalCount, successCount)
+	// 检查会话状态
+	if !session.IsNormal() {
+		// 会话未激活，缓存消息（保持原有逻辑）
+		return s.cacheMessageForSession(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
+	}
 
-	return &pb.BatchUnicastPushResponse{
-		SuccessCount: successCount,
-		TotalCount:   totalCount,
-		Results:      results,
+	// 会话已激活，使用新的保序机制发送
+	return session.ProcessNotify(req)
+}
+
+// handleUnicastToGIDWithOrdering 使用消息保序机制处理到GID的单播推送
+func (s *Server) handleUnicastToGIDWithOrdering(gid int64, req *pb.UnicastPushRequest) error {
+	session, exists := s.sessionManager.GetSessionByGID(gid)
+	if !exists {
+		// GID对应的会话不存在，可能用户未登录，缓存消息
+		return s.cacheMessageForGID(gid, req.MsgType, req.Title, req.Content, req.Data)
+	}
+
+	// 检查会话状态
+	if !session.IsNormal() {
+		// 会话未激活，缓存消息
+		return s.cacheMessageForSession(session.ID, req.MsgType, req.Title, req.Content, req.Data)
+	}
+
+	// 会话已激活，使用新的保序机制发送
+	return session.ProcessNotify(req)
+}
+
+// handleUnicastToOpenIDWithOrdering 使用消息保序机制处理到OpenID的单播推送
+func (s *Server) handleUnicastToOpenIDWithOrdering(req *pb.UnicastPushRequest) error {
+	session, exists := s.sessionManager.GetSessionByOpenID(req.TargetId)
+	if !exists {
+		// OpenID对应的会话不存在，可能用户未连接，缓存消息
+		return s.cacheMessageForOpenID(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
+	}
+
+	// 检查会话状态
+	if !session.IsNormal() {
+		// 会话未激活，缓存消息
+		return s.cacheMessageForSession(session.ID, req.MsgType, req.Title, req.Content, req.Data)
+	}
+
+	// 会话已激活，使用新的保序机制发送
+	return session.ProcessNotify(req)
+}
+
+// BroadcastToClients 实现广播推送到所有在线客户端
+func (s *Server) BroadcastToClients(ctx context.Context, req *pb.BroadcastRequest) (*pb.BroadcastResponse, error) {
+	log.Printf("收到广播推送请求 - 消息类型: %s, 标题: %s", req.MsgType, req.Title)
+
+	// 获取所有活跃会话
+	sessions := s.sessionManager.GetAllSessions()
+	successCount := int32(0)
+	totalCount := int32(len(sessions))
+
+	for _, session := range sessions {
+		// 只向已激活的会话广播
+		if !session.IsNormal() || session.IsClosed() {
+			continue
+		}
+
+		// 发送广播消息
+		if err := s.sendBroadcastMessage(session, req); err != nil {
+			log.Printf("广播消息发送失败 - 会话: %s, 错误: %v", session.ID, err)
+			continue
+		}
+
+		successCount++
+	}
+
+	message := fmt.Sprintf("广播消息已发送到 %d/%d 个在线客户端", successCount, totalCount)
+	log.Printf("广播推送完成 - %s", message)
+
+	return &pb.BroadcastResponse{
+		SentCount: successCount,
+		Message:   message,
 	}, nil
+}
+
+// sendBroadcastMessage 发送广播消息到指定会话
+func (s *Server) sendBroadcastMessage(session *session.Session, req *pb.BroadcastRequest) error {
+	if session.IsClosed() {
+		return fmt.Errorf("会话已关闭: %s", session.ID)
+	}
+
+	// 构造推送消息
+	push := &pb.ServerPush{
+		Type:    pb.PushType_PUSH_BUSINESS_DATA,
+		SeqId:   session.IncrementAndGetSeq(), // 使用会话级别的序列号生成
+		Payload: req.Data,
+		Headers: req.Metadata,
+	}
+
+	// 编码消息
+	encodedData, err := s.messageCodec.EncodeServerPush(push)
+	if err != nil {
+		return fmt.Errorf("编码广播消息失败: %v", err)
+	}
+
+	// 通过有序队列发送
+	if session.GetOrderedQueue() != nil {
+		return session.GetOrderedQueue().EnqueueMessage(push.SeqId, push, encodedData)
+	}
+
+	// 如果没有有序队列，直接发送
+	_, err = session.Stream.Write(encodedData)
+	return err
 }
 
 // 确保Server实现了GatewayService接口

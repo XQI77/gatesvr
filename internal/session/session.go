@@ -57,6 +57,9 @@ type Session struct {
 	// 有序消息队列
 	orderedQueue *OrderedMessageQueue // 消息顺序保证队列
 
+	// 消息保序机制 - 新增
+	orderingManager *MessageOrderingManager // 消息排序管理器
+
 	// 状态管理
 	closed   bool
 	closeMux sync.Mutex
@@ -442,4 +445,43 @@ func (s *Session) InitOrderedQueue(maxQueueSize int) {
 	if s.orderedQueue == nil {
 		s.orderedQueue = NewOrderedMessageQueue(s.ID, maxQueueSize)
 	}
+}
+
+// ======= 消息保序机制相关方法 - 新增 =======
+
+// AddNotifyBindBeforeRsp 将notify消息添加到beforeRspNotifies映射中
+// 这个方法将notify消息绑定到指定的response之前发送
+func (s *Session) AddNotifyBindBeforeRsp(grid uint32, notify *NotifyBindMsgItem) bool {
+	if s.orderingManager == nil {
+		return false
+	}
+	return s.orderingManager.AddNotifyBindBeforeRsp(grid, notify)
+}
+
+// AddNotifyBindAfterRsp 将notify消息添加到afterRspNotifies映射中  
+// 这个方法将notify消息绑定到指定的response之后发送
+func (s *Session) AddNotifyBindAfterRsp(grid uint32, notify *NotifyBindMsgItem) bool {
+	if s.orderingManager == nil {
+		return false
+	}
+	return s.orderingManager.AddNotifyBindAfterRsp(grid, notify)
+}
+
+// IncrementAndGetSeq 原子性地将serverSeq加一并返回新值
+// 这是为下行消息分配递增序号的核心方法
+func (s *Session) IncrementAndGetSeq() uint64 {
+	return s.NewServerSeq()
+}
+
+// GetOrderingManager 获取消息排序管理器
+func (s *Session) GetOrderingManager() *MessageOrderingManager {
+	return s.orderingManager
+}
+
+// CleanupExpiredBindNotifies 清理过期的绑定通知消息
+func (s *Session) CleanupExpiredBindNotifies(maxAge int64) int {
+	if s.orderingManager == nil {
+		return 0
+	}
+	return s.orderingManager.CleanupExpiredNotifies(time.Now().Unix(), maxAge)
 }
