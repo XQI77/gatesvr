@@ -1,0 +1,168 @@
+// Package gateway 提供网关服务器核心功能
+package gateway
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/quic-go/quic-go"
+	"google.golang.org/grpc"
+
+	"gatesvr/internal/message"
+	"gatesvr/internal/session"
+	"gatesvr/pkg/metrics"
+	pb "gatesvr/proto"
+)
+
+// Server 网关服务器
+type Server struct {
+	config *Config
+
+	// 嵌入gRPC服务接口
+	pb.UnimplementedGatewayServiceServer
+
+	// 核心组件
+	sessionManager     *session.Manager           // 会话管理器
+	messageCodec       *message.MessageCodec      // 消息编解码器
+	metrics            *metrics.GateServerMetrics // 监控指标
+	performanceTracker *PerformanceTracker        // 性能追踪器
+	orderedSender      *OrderedMessageSender      // 有序消息发送器
+
+	// gRPC客户端
+	upstreamClient pb.UpstreamServiceClient
+	upstreamConn   *grpc.ClientConn
+
+	// 服务器实例
+	quicListener  *quic.Listener
+	httpServer    *http.Server
+	metricsServer *metrics.MetricsServer
+	grpcServer    *grpc.Server
+
+	// 状态管理
+	running      bool
+	runningMutex sync.RWMutex
+
+	// 停止信号
+	stopCh chan struct{}
+	wg     sync.WaitGroup
+}
+
+// NewServer 创建新的网关服务器
+func NewServer(config *Config) *Server {
+	server := &Server{
+		config:             config,
+		sessionManager:     session.NewManager(config.SessionTimeout, config.AckTimeout, config.MaxRetries),
+		messageCodec:       message.NewMessageCodec(),
+		metrics:            metrics.NewGateServerMetrics(),
+		performanceTracker: NewPerformanceTracker(),
+		stopCh:             make(chan struct{}),
+	}
+	
+	// 初始化有序消息发送器
+	server.orderedSender = NewOrderedMessageSender(server)
+
+	// 设置读取时延回调函数
+	server.messageCodec.SetReadLatencyCallback(func(latency time.Duration) {
+		server.performanceTracker.RecordReadLatency(latency)
+	})
+
+	return server
+}
+
+// Start 启动网关服务器
+func (s *Server) Start(ctx context.Context) error {
+	log.Printf("启动网关服务器...")
+
+	s.runningMutex.Lock()
+	s.running = true
+	s.runningMutex.Unlock()
+
+	// 连接上游服务
+	if err := s.connectUpstream(); err != nil {
+		return fmt.Errorf("连接上游服务失败: %w", err)
+	}
+
+	// 启动各种服务器
+	if err := s.startQUICListener(); err != nil {
+		return fmt.Errorf("启动QUIC监听器失败: %w", err)
+	}
+
+	if err := s.startHTTPServer(); err != nil {
+		return fmt.Errorf("启动HTTP服务器失败: %w", err)
+	}
+
+	if err := s.startMetricsServer(); err != nil {
+		return fmt.Errorf("启动监控服务器失败: %w", err)
+	}
+
+	if err := s.startGRPCServer(); err != nil {
+		return fmt.Errorf("启动gRPC服务器失败: %w", err)
+	}
+
+	// 启动会话管理器
+	s.sessionManager.Start(ctx)
+
+	// 启动连接处理器
+	s.wg.Add(1)
+	go s.acceptConnections(ctx)
+
+	log.Printf("网关服务器启动完成")
+	log.Printf("QUIC监听地址: %s", s.config.QUICAddr)
+	log.Printf("HTTP监听地址: %s", s.config.HTTPAddr)
+	log.Printf("gRPC监听地址: %s", s.config.GRPCAddr)
+	log.Printf("监控地址: %s", s.config.MetricsAddr)
+	log.Printf("上游服务地址: %s", s.config.UpstreamAddr)
+
+	return nil
+}
+
+// Stop 停止网关服务器
+func (s *Server) Stop() {
+	log.Printf("正在停止网关服务器...")
+
+	s.runningMutex.Lock()
+	s.running = false
+	s.runningMutex.Unlock()
+
+	// 发送停止信号
+	close(s.stopCh)
+
+	// 停止QUIC监听器
+	if s.quicListener != nil {
+		s.quicListener.Close()
+	}
+
+	// 停止HTTP服务器
+	if s.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s.httpServer.Shutdown(ctx)
+		cancel()
+	}
+
+	// 停止监控服务器
+	if s.metricsServer != nil {
+		s.metricsServer.Stop()
+	}
+
+	// 停止gRPC服务器
+	if s.grpcServer != nil {
+		s.grpcServer.GracefulStop()
+	}
+
+	// 停止会话管理器
+	s.sessionManager.Stop()
+
+	// 关闭上游连接
+	if s.upstreamConn != nil {
+		s.upstreamConn.Close()
+	}
+
+	// 等待所有goroutine结束
+	s.wg.Wait()
+
+	log.Printf("网关服务器已停止")
+}

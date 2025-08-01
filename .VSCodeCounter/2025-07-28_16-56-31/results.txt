@@ -1,0 +1,101 @@
+Date : 2025-07-28 16:56:31
+Directory : d:\25cxx\try\v1
+Total : 49 files,  11217 codes, 1119 comments, 2254 blanks, all 14590 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| Go               |         33 |      9,470 |      1,035 |      1,861 |     12,366 |
+| Markdown         |          4 |        851 |          0 |        239 |      1,090 |
+| Shell Script     |          3 |        293 |         34 |         62 |        389 |
+| PowerShell       |          2 |        208 |          8 |         34 |        250 |
+| Makefile         |          1 |        201 |         35 |         35 |        271 |
+| Batch            |          2 |         85 |          7 |         17 |        109 |
+| Go Checksum File |          1 |         66 |          0 |          1 |         67 |
+| Go Module File   |          1 |         26 |          0 |          5 |         31 |
+| XML              |          2 |         17 |          0 |          0 |         17 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                   | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                      |         49 |     11,217 |      1,119 |      2,254 |     14,590 |
+| . (Files)                                              |          8 |      1,189 |         35 |        288 |      1,512 |
+| .idea                                                  |          2 |         17 |          0 |          0 |         17 |
+| cmd                                                    |          5 |      1,185 |         81 |        225 |      1,491 |
+| cmd\client                                             |          1 |        488 |         36 |         92 |        616 |
+| cmd\gatesvr                                            |          1 |        137 |         17 |         27 |        181 |
+| cmd\gencerts                                           |          1 |        103 |          8 |         19 |        130 |
+| cmd\monitor                                            |          1 |        376 |          9 |         67 |        452 |
+| cmd\upstream                                           |          1 |         81 |         11 |         20 |        112 |
+| gatesvr                                                |          3 |      2,160 |        146 |        333 |      2,639 |
+| gatesvr\proto                                          |          3 |      2,160 |        146 |        333 |      2,639 |
+| internal                                               |         20 |      3,774 |        631 |        930 |      5,335 |
+| internal\client                                        |          1 |        422 |         65 |         98 |        585 |
+| internal\gateway                                       |         12 |      1,461 |        232 |        359 |      2,052 |
+| internal\message                                       |          1 |        192 |         41 |         51 |        284 |
+| internal\session                                       |          3 |        858 |        176 |        227 |      1,261 |
+| internal\upstream                                      |          3 |        841 |        117 |        195 |      1,153 |
+| pkg                                                    |          1 |        101 |         26 |         27 |        154 |
+| pkg\metrics                                            |          1 |        101 |         26 |         27 |        154 |
+| proto                                                  |          3 |      2,160 |        146 |        333 |      2,639 |
+| scripts                                                |          7 |        631 |         54 |        118 |        803 |
++--------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                               | language         | code       | comment    | blank      | total      |
++--------------------------------------------------------+------------------+------------+------------+------------+------------+
+| d:\25cxx\try\v1\.idea\modules.xml                      | XML              |          8 |          0 |          0 |          8 |
+| d:\25cxx\try\v1\.idea\v1.iml                           | XML              |          9 |          0 |          0 |          9 |
+| d:\25cxx\try\v1\GRPC_UNICAST_SUMMARY.md                | Markdown         |        116 |          0 |         38 |        154 |
+| d:\25cxx\try\v1\LATENCY_MONITORING.md                  | Markdown         |        160 |          0 |         46 |        206 |
+| d:\25cxx\try\v1\Makefile                               | Makefile         |        201 |         35 |         35 |        271 |
+| d:\25cxx\try\v1\OPTIMIZATION_SUMMARY.md                | Markdown         |        309 |          0 |         80 |        389 |
+| d:\25cxx\try\v1\QUICKSTART.md                          | Markdown         |        266 |          0 |         75 |        341 |
+| d:\25cxx\try\v1\build.bat                              | Batch            |         45 |          0 |          8 |         53 |
+| d:\25cxx\try\v1\cmd\client\main.go                     | Go               |        488 |         36 |         92 |        616 |
+| d:\25cxx\try\v1\cmd\gatesvr\main.go                    | Go               |        137 |         17 |         27 |        181 |
+| d:\25cxx\try\v1\cmd\gencerts\main.go                   | Go               |        103 |          8 |         19 |        130 |
+| d:\25cxx\try\v1\cmd\monitor\main.go                    | Go               |        376 |          9 |         67 |        452 |
+| d:\25cxx\try\v1\cmd\upstream\main.go                   | Go               |         81 |         11 |         20 |        112 |
+| d:\25cxx\try\v1\gatesvr\proto\message.pb.go            | Go               |        616 |         29 |        100 |        745 |
+| d:\25cxx\try\v1\gatesvr\proto\upstream.pb.go           | Go               |      1,299 |         47 |        197 |      1,543 |
+| d:\25cxx\try\v1\gatesvr\proto\upstream_grpc.pb.go      | Go               |        245 |         70 |         36 |        351 |
+| d:\25cxx\try\v1\go.mod                                 | Go Module File   |         26 |          0 |          5 |         31 |
+| d:\25cxx\try\v1\go.sum                                 | Go Checksum File |         66 |          0 |          1 |         67 |
+| d:\25cxx\try\v1\internal\client\client.go              | Go               |        422 |         65 |         98 |        585 |
+| d:\25cxx\try\v1\internal\gateway\config.go             | Go               |         14 |          5 |          5 |         24 |
+| d:\25cxx\try\v1\internal\gateway\handlers.go           | Go               |        140 |         22 |         28 |        190 |
+| d:\25cxx\try\v1\internal\gateway\http_handlers.go      | Go               |        106 |         13 |         20 |        139 |
+| d:\25cxx\try\v1\internal\gateway\performance.go        | Go               |        283 |         38 |         58 |        379 |
+| d:\25cxx\try\v1\internal\gateway\push_client.go        | Go               |        292 |         43 |         79 |        414 |
+| d:\25cxx\try\v1\internal\gateway\server.go             | Go               |        126 |         28 |         41 |        195 |
+| d:\25cxx\try\v1\internal\gateway\server_connection.go  | Go               |        188 |         35 |         43 |        266 |
+| d:\25cxx\try\v1\internal\gateway\server_push.go        | Go               |         78 |          8 |         18 |        104 |
+| d:\25cxx\try\v1\internal\gateway\server_start.go       | Go               |         75 |         11 |         23 |        109 |
+| d:\25cxx\try\v1\internal\gateway\server_upstream.go    | Go               |         80 |         18 |         21 |        119 |
+| d:\25cxx\try\v1\internal\gateway\server_utils.go       | Go               |         26 |          6 |          9 |         41 |
+| d:\25cxx\try\v1\internal\gateway\unicast_service.go    | Go               |         53 |          5 |         14 |         72 |
+| d:\25cxx\try\v1\internal\message\codec.go              | Go               |        192 |         41 |         51 |        284 |
+| d:\25cxx\try\v1\internal\session\cache.go              | Go               |        260 |         40 |         62 |        362 |
+| d:\25cxx\try\v1\internal\session\manager.go            | Go               |        375 |         78 |         96 |        549 |
+| d:\25cxx\try\v1\internal\session\session.go            | Go               |        223 |         58 |         69 |        350 |
+| d:\25cxx\try\v1\internal\upstream\broadcast_manager.go | Go               |        299 |         42 |         63 |        404 |
+| d:\25cxx\try\v1\internal\upstream\server.go            | Go               |        420 |         61 |        102 |        583 |
+| d:\25cxx\try\v1\internal\upstream\unicast_client.go    | Go               |        122 |         14 |         30 |        166 |
+| d:\25cxx\try\v1\pkg\metrics\metrics.go                 | Go               |        101 |         26 |         27 |        154 |
+| d:\25cxx\try\v1\proto\message.pb.go                    | Go               |        616 |         29 |        100 |        745 |
+| d:\25cxx\try\v1\proto\upstream.pb.go                   | Go               |      1,299 |         47 |        197 |      1,543 |
+| d:\25cxx\try\v1\proto\upstream_grpc.pb.go              | Go               |        245 |         70 |         36 |        351 |
+| d:\25cxx\try\v1\scripts\generate_certs.bat             | Batch            |         40 |          7 |          9 |         56 |
+| d:\25cxx\try\v1\scripts\generate_certs.sh              | Shell Script     |         18 |          7 |          9 |         34 |
+| d:\25cxx\try\v1\scripts\test_grpc_unicast.go           | Go               |         90 |          5 |         13 |        108 |
+| d:\25cxx\try\v1\scripts\test_grpc_unicast.ps1          | PowerShell       |         50 |          7 |          8 |         65 |
+| d:\25cxx\try\v1\scripts\test_performance.sh            | Shell Script     |        169 |         24 |         33 |        226 |
+| d:\25cxx\try\v1\scripts\test_unicast.ps1               | PowerShell       |        158 |          1 |         26 |        185 |
+| d:\25cxx\try\v1\scripts\test_unicast.sh                | Shell Script     |        106 |          3 |         20 |        129 |
+| Total                                                  |                  |     11,217 |      1,119 |      2,254 |     14,590 |
++--------------------------------------------------------+------------------+------------+------------+------------+------------+
