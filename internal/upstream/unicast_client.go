@@ -91,7 +91,30 @@ func (c *UnicastClient) PushToSession(ctx context.Context, sessionID, msgType, t
 	return c.PushToClient(ctx, "session", sessionID, msgType, title, content, data)
 }
 
-// DemoUnicastPush 演示单播推送功能
+// BroadcastToClients 广播消息到所有在线客户端
+func (c *UnicastClient) BroadcastToClients(ctx context.Context, msgType, title, content string, data []byte, metadata map[string]string) error {
+	if c.client == nil {
+		return fmt.Errorf("客户端未连接")
+	}
+
+	req := &pb.BroadcastRequest{
+		MsgType:  msgType,
+		Title:    title,
+		Content:  content,
+		Data:     data,
+		Metadata: metadata,
+	}
+
+	resp, err := c.client.BroadcastToClients(ctx, req)
+	if err != nil {
+		return fmt.Errorf("广播gRPC调用失败: %w", err)
+	}
+
+	log.Printf("广播消息发送成功 - 发送给 %d 个客户端, 消息: %s", resp.SentCount, title)
+	return nil
+}
+
+// DemoUnicastPush 演示单播推送功能（保留用于兼容性）
 func (c *UnicastClient) DemoUnicastPush() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

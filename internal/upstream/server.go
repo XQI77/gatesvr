@@ -31,6 +31,10 @@ type Server struct {
 	activeConnections int32
 	connMutex         sync.RWMutex
 
+	// 用户会话管理
+	loggedInUsers map[string]*UserSession // key是openid
+	usersMutex    sync.RWMutex
+
 	// gRPC服务器
 	grpcServer *grpc.Server
 	listener   net.Listener
@@ -40,12 +44,21 @@ type Server struct {
 	wg     sync.WaitGroup
 }
 
+// UserSession 用户会话信息
+type UserSession struct {
+	OpenID     string    `json:"openid"`
+	SessionID  string    `json:"session_id"`
+	LoginTime  time.Time `json:"login_time"`
+	LastActive time.Time `json:"last_active"`
+}
+
 // NewServer 创建新的上游服务器
 func NewServer(addr string) *Server {
 	return &Server{
 		addr:          addr,
 		startTime:     time.Now(),
 		unicastClient: NewUnicastClient("localhost:8082"), // 网关gRPC地址
+		loggedInUsers: make(map[string]*UserSession),
 		stopCh:        make(chan struct{}),
 	}
 }
@@ -75,9 +88,9 @@ func (s *Server) Start() error {
 	// 注册服务
 	pb.RegisterUpstreamServiceServer(s.grpcServer, s)
 
-	// 启动单播推送演示任务 (演示)
+	// 启动定时广播任务
 	s.wg.Add(1)
-	go s.demoUnicastPush()
+	go s.broadcastRoutine()
 
 	log.Printf("上游服务器已启动: %s", s.addr)
 	log.Printf("gRPC服务接口:")
@@ -122,16 +135,20 @@ func (s *Server) ProcessRequest(ctx context.Context, req *pb.UpstreamRequest) (*
 
 	// 根据动作类型处理不同的业务逻辑
 	switch req.Action {
+	case "login", "auth", "signin", "hello":
+		return s.handleLogin(ctx, req)
+	case "logout":
+		return s.handleLogout(ctx, req)
 	case "echo":
 		return s.handleEcho(ctx, req)
 	case "time":
 		return s.handleTime(ctx, req)
-	case "hello":
-		return s.handleHello(ctx, req)
 	case "calculate":
 		return s.handleCalculate(ctx, req)
 	case "status":
 		return s.handleStatus(ctx, req)
+	case "user_list":
+		return s.handleUserList(ctx, req)
 	case "broadcast":
 		return s.handleBroadcastCommand(ctx, req)
 	default:
@@ -208,22 +225,105 @@ func (s *Server) handleTime(ctx context.Context, req *pb.UpstreamRequest) (*pb.U
 	}, nil
 }
 
-// handleHello 处理问候请求
-func (s *Server) handleHello(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
-	name := req.Params["name"]
-	if name == "" {
-		name = "世界"
+// handleLogin 处理登录请求
+func (s *Server) handleLogin(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	if req.Openid == "" {
+		return &pb.UpstreamResponse{
+			Code:    400,
+			Message: "OpenID不能为空",
+			Data:    []byte("登录失败：缺少OpenID"),
+		}, nil
 	}
 
-	message := fmt.Sprintf("你好, %s! 欢迎使用网关服务器。", name)
+	// 记录用户登录
+	s.usersMutex.Lock()
+	s.loggedInUsers[req.Openid] = &UserSession{
+		OpenID:     req.Openid,
+		SessionID:  req.SessionId,
+		LoginTime:  time.Now(),
+		LastActive: time.Now(),
+	}
+	userCount := len(s.loggedInUsers)
+	s.usersMutex.Unlock()
+
+	name := req.Params["name"]
+	if name == "" {
+		name = req.Openid
+	}
+
+	message := fmt.Sprintf("你好, %s! 欢迎登录网关服务器。当前在线用户：%d人", name, userCount)
+	log.Printf("用户登录成功 - OpenID: %s, SessionID: %s, 在线用户数: %d", req.Openid, req.SessionId, userCount)
 
 	return &pb.UpstreamResponse{
 		Code:    200,
-		Message: "问候成功",
+		Message: "登录成功",
 		Data:    []byte(message),
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"language":     "zh-CN",
+			"gid":          "123456", // 示例GID
+			"zone":         "1",      // 示例Zone
+		},
+	}, nil
+}
+
+// handleLogout 处理登出请求
+func (s *Server) handleLogout(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	if req.Openid == "" {
+		return &pb.UpstreamResponse{
+			Code:    400,
+			Message: "OpenID不能为空",
+			Data:    []byte("登出失败：缺少OpenID"),
+		}, nil
+	}
+
+	// 移除用户登录记录
+	s.usersMutex.Lock()
+	delete(s.loggedInUsers, req.Openid)
+	userCount := len(s.loggedInUsers)
+	s.usersMutex.Unlock()
+
+	message := fmt.Sprintf("再见! 您已成功登出。当前在线用户：%d人", userCount)
+	log.Printf("用户登出成功 - OpenID: %s, SessionID: %s, 剩余在线用户数: %d", req.Openid, req.SessionId, userCount)
+
+	return &pb.UpstreamResponse{
+		Code:    200,
+		Message: "登出成功",
+		Data:    []byte(message),
+		Headers: map[string]string{
+			"content-type": "text/plain",
+		},
+	}, nil
+}
+
+// handleUserList 处理用户列表查询
+func (s *Server) handleUserList(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	s.usersMutex.RLock()
+	userCount := len(s.loggedInUsers)
+	
+	var userList []string
+	for openid, session := range s.loggedInUsers {
+		userInfo := fmt.Sprintf("OpenID: %s, 登录时间: %s", 
+			openid, session.LoginTime.Format("2006-01-02 15:04:05"))
+		userList = append(userList, userInfo)
+	}
+	s.usersMutex.RUnlock()
+
+	message := fmt.Sprintf("当前在线用户数: %d\n", userCount)
+	if len(userList) > 0 {
+		message += "用户列表:\n"
+		for _, userInfo := range userList {
+			message += userInfo + "\n"
+		}
+	}
+
+	return &pb.UpstreamResponse{
+		Code:    200,
+		Message: "查询成功",
+		Data:    []byte(message),
+		Headers: map[string]string{
+			"content-type": "text/plain",
+			"user_count":   fmt.Sprintf("%d", userCount),
 		},
 	}, nil
 }
@@ -339,12 +439,26 @@ func (s *Server) handleStatus(ctx context.Context, req *pb.UpstreamRequest) (*pb
 	}, nil
 }
 
-// handleBroadcastCommand 处理广播命令 (已删除 - 不再支持广播)
+// handleBroadcastCommand 处理广播命令
 func (s *Server) handleBroadcastCommand(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	message := req.Params["message"]
+	if message == "" {
+		message = "系统广播消息"
+	}
+
+	// 立即发送一次广播
+	userCount := s.sendBroadcastMessage(message, req.Data)
+
+	responseMsg := fmt.Sprintf("广播消息已发送给 %d 个在线用户", userCount)
+	
 	return &pb.UpstreamResponse{
-		Code:    501,
-		Message: "广播功能已停用",
-		Data:    []byte("广播功能已从系统中移除"),
+		Code:    200,
+		Message: "广播成功",
+		Data:    []byte(responseMsg),
+		Headers: map[string]string{
+			"content-type": "text/plain",
+			"user_count":   fmt.Sprintf("%d", userCount),
+		},
 	}, nil
 }
 
@@ -429,39 +543,126 @@ func (s *Server) streamInterceptor(srv interface{}, stream grpc.ServerStream, in
 	return err
 }
 
-// demoUnicastPush 演示单播推送功能
-func (s *Server) demoUnicastPush() {
+// broadcastRoutine 定时广播任务
+func (s *Server) broadcastRoutine() {
 	defer s.wg.Done()
 
-	ticker := time.NewTicker(10 * time.Second) // 每2分钟演示一次
+	ticker := time.NewTicker(30 * time.Second) // 每30秒广播一次
 	defer ticker.Stop()
 
-	// 启动时立即演示一次
-	if s.unicastClient != nil {
-		s.unicastClient.DemoUnicastPush()
-	}
+	broadcastCount := 0
 
 	for {
 		select {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			if s.unicastClient != nil {
-				s.unicastClient.DemoUnicastPush()
+			s.usersMutex.RLock()
+			userCount := len(s.loggedInUsers)
+			s.usersMutex.RUnlock()
+
+			// 只有在有在线用户时才广播
+			if userCount > 0 {
+				broadcastCount++
+				message := fmt.Sprintf("定时广播消息 #%d - 当前时间: %s, 在线用户: %d人", 
+					broadcastCount, 
+					time.Now().Format("2006-01-02 15:04:05"),
+					userCount)
+				
+				data := []byte(message)
+				actualUserCount := s.sendBroadcastMessage(message, data)
+				
+				log.Printf("定时广播完成 #%d - 目标用户: %d, 实际发送: %d", 
+					broadcastCount, userCount, actualUserCount)
 			}
 		}
 	}
 }
 
-// SendBroadcast 对外广播接口 (已停用)
-func (s *Server) SendBroadcast(message string, data []byte, headers map[string]string) error {
-	return fmt.Errorf("广播功能已停用")
+// sendBroadcastMessage 发送广播消息给所有在线用户
+func (s *Server) sendBroadcastMessage(message string, data []byte) int {
+	if s.unicastClient == nil {
+		log.Printf("广播失败：单播客户端未初始化")
+		return 0
+	}
+
+	s.usersMutex.RLock()
+	users := make([]*UserSession, 0, len(s.loggedInUsers))
+	for _, user := range s.loggedInUsers {
+		users = append(users, user)
+	}
+	s.usersMutex.RUnlock()
+
+	if len(users) == 0 {
+		log.Printf("没有在线用户，跳过广播")
+		return 0
+	}
+
+	// 使用网关的广播功能
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := s.unicastClient.BroadcastToClients(ctx, "system", "系统广播", message, data, nil)
+	if err != nil {
+		log.Printf("广播发送失败: %v", err)
+		return 0
+	}
+
+	log.Printf("广播消息已发送 - 目标用户数: %d, 消息: %s", len(users), message)
+	return len(users)
 }
 
-// GetBroadcastStats 获取广播统计 (已停用)
+// SendBroadcast 对外广播接口
+func (s *Server) SendBroadcast(message string, data []byte, headers map[string]string) error {
+	userCount := s.sendBroadcastMessage(message, data)
+	if userCount > 0 {
+		return nil
+	}
+	return fmt.Errorf("广播发送失败或没有在线用户")
+}
+
+// GetBroadcastStats 获取广播统计
 func (s *Server) GetBroadcastStats() map[string]interface{} {
+	s.usersMutex.RLock()
+	userCount := len(s.loggedInUsers)
+	var userList []string
+	for openid, session := range s.loggedInUsers {
+		userList = append(userList, fmt.Sprintf("%s(登录时间:%s)", 
+			openid, session.LoginTime.Format("15:04:05")))
+	}
+	s.usersMutex.RUnlock()
+
 	return map[string]interface{}{
-		"status":  "disabled",
-		"message": "broadcast functionality has been removed",
+		"status":      "active",
+		"online_users": userCount,
+		"user_list":   userList,
+		"uptime":      time.Since(s.startTime).String(),
+	}
+}
+
+// GetLoggedInUsers 获取已登录用户列表
+func (s *Server) GetLoggedInUsers() []*UserSession {
+	s.usersMutex.RLock()
+	defer s.usersMutex.RUnlock()
+
+	users := make([]*UserSession, 0, len(s.loggedInUsers))
+	for _, user := range s.loggedInUsers {
+		users = append(users, &UserSession{
+			OpenID:     user.OpenID,
+			SessionID:  user.SessionID,
+			LoginTime:  user.LoginTime,
+			LastActive: user.LastActive,
+		})
+	}
+	return users
+}
+
+// UpdateUserActivity 更新用户活动时间
+func (s *Server) UpdateUserActivity(openid string) {
+	s.usersMutex.Lock()
+	defer s.usersMutex.Unlock()
+
+	if user, exists := s.loggedInUsers[openid]; exists {
+		user.LastActive = time.Now()
 	}
 }

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"gatesvr/internal/session"
 	pb "gatesvr/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // PushToClient 实现单播推送到指定客户端 - 支持消息保序机制
@@ -106,35 +108,49 @@ func (s *Server) sendUnicastMessage(session *session.Session, msgType, title, co
 		return fmt.Errorf("会话已关闭: %s", session.ID)
 	}
 
-	// 可以根据msgType设置不同的推送类型
-	if title != "" || content != "" {
-		// 这里可以构造通知载荷，暂时直接使用原始数据
-		log.Printf("推送通知消息 - 标题: %s, 内容: %s", title, content)
+	// 构造BusinessResponse格式的消息（确保客户端能正确解析）
+	businessResp := &pb.BusinessResponse{
+		Code:    200,
+		Message: fmt.Sprintf("[%s] %s", msgType, title),
+		Data:    data,
 	}
 
-	// 发送推送消息（使用有序发送器）
-	if err := s.orderedSender.PushBusinessData(session, data); err != nil {
+	// 序列化BusinessResponse
+	payload, err := proto.Marshal(businessResp)
+	if err != nil {
+		return fmt.Errorf("序列化单播BusinessResponse失败: %v", err)
+	}
+
+	// 发送推送消息（使用有序发送器，gatesvr自动分配序列号）
+	if err := s.orderedSender.PushBusinessData(session, payload); err != nil {
 		log.Printf("发送推送消息失败: %v", err)
 		return fmt.Errorf("发送推送消息失败: %w", err)
 	}
 
-	log.Printf("单播推送成功 - 会话: %s, 类型: %s", session.ID, msgType)
+	log.Printf("单播推送成功 - 会话: %s, 类型: %s, 标题: %s", session.ID, msgType, title)
 	return nil
 }
 
 // cacheMessageForSession 为会话缓存消息
 func (s *Server) cacheMessageForSession(sessionID, msgType, title, content string, data []byte) error {
-	// 构造完整的推送消息数据
-	session, exists := s.sessionManager.GetSession(sessionID)
-	if !exists {
-		return fmt.Errorf("会话不存在: %s", sessionID)
+	// 构造BusinessResponse格式的消息（确保客户端能正确解析）
+	businessResp := &pb.BusinessResponse{
+		Code:    200,
+		Message: fmt.Sprintf("[%s] %s", msgType, title),
+		Data:    data,
 	}
 
-	// 创建推送消息（使用serverSeq保证顺序）
+	// 序列化BusinessResponse
+	payload, err := proto.Marshal(businessResp)
+	if err != nil {
+		return fmt.Errorf("序列化缓存BusinessResponse失败: %v", err)
+	}
+
+	// 构造ServerPush消息，但不分配序列号（缓存的消息在投递时才分配序列号）
 	push := &pb.ServerPush{
 		Type:    pb.PushType_PUSH_BUSINESS_DATA,
-		SeqId:   session.NewServerSeq(), // 使用serverSeq而不是nextSeqID
-		Payload: data,
+		SeqId:   0, // 缓存时不分配序列号，投递时由有序发送器分配
+		Payload: payload,
 	}
 
 	// 编码消息
@@ -186,8 +202,8 @@ func (s *Server) handleUnicastToSessionWithOrdering(req *pb.UnicastPushRequest) 
 		return s.cacheMessageForSession(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
 	}
 
-	// 会话已激活，使用新的保序机制发送
-	return session.ProcessNotify(req)
+	// 会话已激活，根据SyncHint处理消息
+	return s.processNotifyMessage(session, req)
 }
 
 // handleUnicastToGIDWithOrdering 使用消息保序机制处理到GID的单播推送
@@ -204,8 +220,8 @@ func (s *Server) handleUnicastToGIDWithOrdering(gid int64, req *pb.UnicastPushRe
 		return s.cacheMessageForSession(session.ID, req.MsgType, req.Title, req.Content, req.Data)
 	}
 
-	// 会话已激活，使用新的保序机制发送
-	return session.ProcessNotify(req)
+	// 会话已激活，根据SyncHint处理消息
+	return s.processNotifyMessage(session, req)
 }
 
 // handleUnicastToOpenIDWithOrdering 使用消息保序机制处理到OpenID的单播推送
@@ -222,8 +238,8 @@ func (s *Server) handleUnicastToOpenIDWithOrdering(req *pb.UnicastPushRequest) e
 		return s.cacheMessageForSession(session.ID, req.MsgType, req.Title, req.Content, req.Data)
 	}
 
-	// 会话已激活，使用新的保序机制发送
-	return session.ProcessNotify(req)
+	// 会话已激活，根据SyncHint处理消息
+	return s.processNotifyMessage(session, req)
 }
 
 // BroadcastToClients 实现广播推送到所有在线客户端
@@ -265,28 +281,108 @@ func (s *Server) sendBroadcastMessage(session *session.Session, req *pb.Broadcas
 		return fmt.Errorf("会话已关闭: %s", session.ID)
 	}
 
-	// 构造推送消息
-	push := &pb.ServerPush{
-		Type:    pb.PushType_PUSH_BUSINESS_DATA,
-		SeqId:   session.IncrementAndGetSeq(), // 使用会话级别的序列号生成
-		Payload: req.Data,
-		Headers: req.Metadata,
+	// 构造BusinessResponse格式的广播消息（确保客户端能正确解析）
+	businessResp := &pb.BusinessResponse{
+		Code:    200,
+		Message: fmt.Sprintf("[%s] %s", req.MsgType, req.Title),
+		Data:    req.Data,
 	}
 
-	// 编码消息
-	encodedData, err := s.messageCodec.EncodeServerPush(push)
+	// 序列化BusinessResponse
+	payload, err := proto.Marshal(businessResp)
 	if err != nil {
-		return fmt.Errorf("编码广播消息失败: %v", err)
+		return fmt.Errorf("序列化广播BusinessResponse失败: %v", err)
 	}
 
-	// 通过有序队列发送
-	if session.GetOrderedQueue() != nil {
-		return session.GetOrderedQueue().EnqueueMessage(push.SeqId, push, encodedData)
+	// 直接使用有序发送器发送广播消息，让gatesvr统一管理序列号
+	if err := s.orderedSender.PushBusinessData(session, payload); err != nil {
+		return fmt.Errorf("发送广播消息失败: %w", err)
 	}
 
-	// 如果没有有序队列，直接发送
-	_, err = session.Stream.Write(encodedData)
-	return err
+	return nil
+}
+
+// processNotifyMessage 在gateway层处理notify消息，统一管理序列号
+func (s *Server) processNotifyMessage(session *session.Session, req *pb.UnicastPushRequest) error {
+	// 根据SyncHint决定处理方式
+	switch req.SyncHint {
+	case pb.NotifySyncHint_NSH_BEFORE_RESPONSE:
+		// 绑定到指定response之前发送
+		grid := uint32(req.BindClientSeqId)
+		if grid == 0 {
+			return fmt.Errorf("bind_client_seq_id is required for NSH_BEFORE_RESPONSE")
+		}
+		
+		// 创建NotifyBindMsgItem
+		notifyItem := s.createNotifyBindMsgItem(req)
+		if !session.AddNotifyBindBeforeRsp(grid, notifyItem) {
+			return fmt.Errorf("failed to bind notify before response for grid: %d", grid)
+		}
+		
+		log.Printf("Notify消息已绑定到response之前 - grid: %d, 会话: %s", grid, session.ID)
+		return nil
+		
+	case pb.NotifySyncHint_NSH_AFTER_RESPONSE:
+		// 绑定到指定response之后发送
+		grid := uint32(req.BindClientSeqId)
+		if grid == 0 {
+			return fmt.Errorf("bind_client_seq_id is required for NSH_AFTER_RESPONSE")
+		}
+		
+		// 创建NotifyBindMsgItem
+		notifyItem := s.createNotifyBindMsgItem(req)
+		if !session.AddNotifyBindAfterRsp(grid, notifyItem) {
+			return fmt.Errorf("failed to bind notify after response for grid: %d", grid)
+		}
+		
+		log.Printf("Notify消息已绑定到response之后 - grid: %d, 会话: %s", grid, session.ID)
+		return nil
+		
+	case pb.NotifySyncHint_NSH_IMMEDIATELY:
+		fallthrough
+	default:
+		// 立即发送 - 构造BusinessResponse格式并使用有序发送器统一管理序列号
+		businessResp := &pb.BusinessResponse{
+			Code:    200,
+			Message: fmt.Sprintf("[%s] %s", req.MsgType, req.Title),
+			Data:    req.Data,
+		}
+		
+		// 序列化BusinessResponse
+		payload, err := proto.Marshal(businessResp)
+		if err != nil {
+			return fmt.Errorf("序列化立即notify BusinessResponse失败: %w", err)
+		}
+		
+		if err := s.orderedSender.PushBusinessData(session, payload); err != nil {
+			return fmt.Errorf("发送立即notify失败: %w", err)
+		}
+		
+		log.Printf("立即notify消息发送成功 - 会话: %s, 类型: %s, 标题: %s", session.ID, req.MsgType, req.Title)
+		return nil
+	}
+}
+
+// createNotifyBindMsgItem 创建NotifyBindMsgItem
+func (s *Server) createNotifyBindMsgItem(req *pb.UnicastPushRequest) *session.NotifyBindMsgItem {
+	// 序列化notify消息数据
+	notifyData, err := proto.Marshal(req)
+	if err != nil {
+		log.Printf("序列化notify消息失败: %v", err)
+		// 使用原始数据作为备选
+		notifyData = req.Data
+	}
+	
+	return &session.NotifyBindMsgItem{
+		NotifyData: notifyData,
+		MsgType:    req.MsgType,
+		Title:      req.Title,
+		Content:    req.Content,
+		Metadata:   req.Metadata,
+		SyncHint:   req.SyncHint,
+		BindGrid:   uint32(req.BindClientSeqId),
+		CreateTime: time.Now().Unix(),
+	}
 }
 
 // 确保Server实现了GatewayService接口
