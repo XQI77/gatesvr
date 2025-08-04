@@ -86,6 +86,37 @@ func (c *UnicastClient) PushToOpenID(ctx context.Context, openID, msgType, title
 	return c.PushToClient(ctx, "openid", openID, msgType, title, content, data)
 }
 
+// PushToOpenIDWithSyncHint 推送到指定OpenID，带同步提示
+func (c *UnicastClient) PushToOpenIDWithSyncHint(ctx context.Context, openID, msgType, title, content string, data []byte, syncHint pb.NotifySyncHint, bindClientSeqId uint64) error {
+	if c.client == nil {
+		return fmt.Errorf("客户端未连接")
+	}
+
+	req := &pb.UnicastPushRequest{
+		TargetType:        "openid",
+		TargetId:          openID,
+		MsgType:           msgType,
+		Title:             title,
+		Content:           content,
+		Data:              data,
+		SyncHint:          syncHint,
+		BindClientSeqId:   bindClientSeqId,
+	}
+
+	resp, err := c.client.PushToClient(ctx, req)
+	if err != nil {
+		return fmt.Errorf("gRPC调用失败: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("推送失败: %s (错误码: %s)", resp.Message, resp.ErrorCode)
+	}
+
+	log.Printf("带同步提示的推送成功 - OpenID: %s, 同步提示: %v, 绑定序列号: %d, 消息: %s", 
+		openID, syncHint, bindClientSeqId, title)
+	return nil
+}
+
 // PushToSession 推送到指定Session
 func (c *UnicastClient) PushToSession(ctx context.Context, sessionID, msgType, title, content string, data []byte) error {
 	return c.PushToClient(ctx, "session", sessionID, msgType, title, content, data)

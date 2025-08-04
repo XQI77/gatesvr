@@ -19,6 +19,40 @@ import (
 	pb "gatesvr/proto"
 )
 
+// getRequestTypeName 获取请求类型名称
+func getRequestTypeName(reqType pb.RequestType) string {
+	switch reqType {
+	case pb.RequestType_REQUEST_START:
+		return "START"
+	case pb.RequestType_REQUEST_STOP:
+		return "STOP"
+	case pb.RequestType_REQUEST_HEARTBEAT:
+		return "HEARTBEAT"
+	case pb.RequestType_REQUEST_BUSINESS:
+		return "BUSINESS"
+	case pb.RequestType_REQUEST_ACK:
+		return "ACK"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// getPushTypeName 获取推送类型名称
+func getPushTypeName(pushType pb.PushType) string {
+	switch pushType {
+	case pb.PushType_PUSH_START_RESP:
+		return "START_RESP"
+	case pb.PushType_PUSH_HEARTBEAT_RESP:
+		return "HEARTBEAT_RESP"
+	case pb.PushType_PUSH_BUSINESS_DATA:
+		return "BUSINESS_DATA"
+	case pb.PushType_PUSH_ERROR:
+		return "ERROR"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // Config 客户端配置
 type Config struct {
 	ServerAddr        string        // 服务器地址
@@ -637,7 +671,7 @@ func (c *Client) sendRequest(req *pb.ClientRequest) error {
 		return fmt.Errorf("发送消息失败: %w", err)
 	}
 
-	log.Printf("发送请求 - 类型: %d, 消息ID: %d", req.Type, req.MsgId)
+	log.Printf("发送请求 - 类型: %s, 消息ID: %d", getRequestTypeName(req.Type), req.MsgId)
 	return nil
 }
 
@@ -682,8 +716,8 @@ func (c *Client) messageReceiver(ctx context.Context) {
 
 // handleServerPush 处理服务器推送消息
 func (c *Client) handleServerPush(push *pb.ServerPush) {
-	log.Printf("收到服务器推送 - 类型: %d, 消息ID: %d, 序列号: %d",
-		push.Type, push.MsgId, push.SeqId)
+	log.Printf("收到服务器推送 - 类型: %s, 消息ID: %d, 序列号: %d",
+		getPushTypeName(push.Type), push.MsgId, push.SeqId)
 
 	// 发送ACK确认并更新重连状态
 	if push.SeqId > 0 {
@@ -726,7 +760,7 @@ func (c *Client) handleBroadcastMessage(push *pb.ServerPush) {
 			return
 		}
 
-		log.Printf("收到广播消息: %s - %s", businessResp.Message, string(businessResp.Data))
+		log.Printf("🔔 收到NOTIFY消息 [%s]: %s - %s", time.Now().Format("15:04:05.000"), businessResp.Message, string(businessResp.Data))
 
 	case pb.PushType_PUSH_ERROR:
 		// 解析错误消息
@@ -736,11 +770,11 @@ func (c *Client) handleBroadcastMessage(push *pb.ServerPush) {
 			return
 		}
 
-		log.Printf("收到错误消息: [%d] %s - %s",
+		log.Printf("❌ 收到错误消息 [%s]: [%d] %s - %s", time.Now().Format("15:04:05.000"),
 			errorMsg.ErrorCode, errorMsg.ErrorMessage, errorMsg.Detail)
 
 	default:
-		log.Printf("收到未知类型的推送消息: %d", push.Type)
+		log.Printf("❓ 收到未知类型的推送消息 [%s]: %s", time.Now().Format("15:04:05.000"), getPushTypeName(push.Type))
 	}
 }
 

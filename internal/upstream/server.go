@@ -151,6 +151,10 @@ func (s *Server) ProcessRequest(ctx context.Context, req *pb.UpstreamRequest) (*
 		return s.handleUserList(ctx, req)
 	case "broadcast":
 		return s.handleBroadcastCommand(ctx, req)
+	case "before":
+		return s.handleBeforeCommand(ctx, req)
+	case "after":
+		return s.handleAfterCommand(ctx, req)
 	default:
 		return s.handleDefault(ctx, req)
 	}
@@ -458,6 +462,93 @@ func (s *Server) handleBroadcastCommand(ctx context.Context, req *pb.UpstreamReq
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"user_count":   fmt.Sprintf("%d", userCount),
+		},
+	}, nil
+}
+
+// handleBeforeCommand 处理before指令，notify在response之前返回
+func (s *Server) handleBeforeCommand(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	message := req.Params["message"]
+	if message == "" {
+		message = "测试notify在response之前"
+	}
+
+	// 发送notify消息（在response之前）
+	if s.unicastClient != nil && req.Openid != "" {
+		go func() {
+			pushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			notifyContent := fmt.Sprintf("【NOTIFY BEFORE】%s - 时间: %s", message, time.Now().Format("15:04:05.000"))
+			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "before_test", 
+				"Notify Before Response", notifyContent, []byte("notify_before_data"), 
+				pb.NotifySyncHint_NSH_BEFORE_RESPONSE, req.ClientSeqId)
+			if err != nil {
+				log.Printf("Before notify推送失败: %v", err)
+			} else {
+				log.Printf("Before notify推送成功 - OpenID: %s, 消息: %s", req.Openid, notifyContent)
+			}
+		}()
+	}
+
+	// 模拟处理延迟
+	time.Sleep(100 * time.Millisecond)
+
+	responseMsg := fmt.Sprintf("【RESPONSE】%s - 处理完成时间: %s", message, time.Now().Format("15:04:05.000"))
+	
+	return &pb.UpstreamResponse{
+		Code:         200,
+		Message:      "before指令执行成功",
+		Data:         []byte(responseMsg),
+		ClientSeqId:  req.ClientSeqId,
+		Headers: map[string]string{
+			"content-type": "text/plain",
+			"test-type":    "before",
+		},
+	}, nil
+}
+
+// handleAfterCommand 处理after指令，notify在response之后返回
+func (s *Server) handleAfterCommand(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
+	message := req.Params["message"]
+	if message == "" {
+		message = "测试notify在response之后"
+	}
+
+	// 发送notify消息（在response之后）
+	if s.unicastClient != nil && req.Openid != "" {
+		go func() {
+			// 稍微延迟一下确保response先返回
+			time.Sleep(50 * time.Millisecond)
+			
+			pushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			notifyContent := fmt.Sprintf("【NOTIFY AFTER】%s - 时间: %s", message, time.Now().Format("15:04:05.000"))
+			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "after_test", 
+				"Notify After Response", notifyContent, []byte("notify_after_data"), 
+				pb.NotifySyncHint_NSH_AFTER_RESPONSE, req.ClientSeqId)
+			if err != nil {
+				log.Printf("After notify推送失败: %v", err)
+			} else {
+				log.Printf("After notify推送成功 - OpenID: %s, 消息: %s", req.Openid, notifyContent)
+			}
+		}()
+	}
+
+	// 模拟处理延迟
+	time.Sleep(100 * time.Millisecond)
+
+	responseMsg := fmt.Sprintf("【RESPONSE】%s - 处理完成时间: %s", message, time.Now().Format("15:04:05.000"))
+	
+	return &pb.UpstreamResponse{
+		Code:         200,
+		Message:      "after指令执行成功",
+		Data:         []byte(responseMsg),
+		ClientSeqId:  req.ClientSeqId,
+		Headers: map[string]string{
+			"content-type": "text/plain",
+			"test-type":    "after",
 		},
 	}, nil
 }

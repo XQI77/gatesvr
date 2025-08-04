@@ -608,6 +608,8 @@ func runInteractiveMode(c *client.Client, sigCh <-chan os.Signal) {
 	fmt.Println("  disconnect               - 断开连接（保持重连状态）")
 	fmt.Println("  reconnect                - 重新连接（保持序列号连续性）")
 	fmt.Println("  test_reconnect           - 测试短线重连功能")
+	fmt.Println("  before [message]         - 测试notify在response之前返回")
+	fmt.Println("  after [message]          - 测试notify在response之后返回")
 	fmt.Println("  quit/exit                - 退出")
 	fmt.Println("========================================")
 	fmt.Println()
@@ -687,6 +689,22 @@ func runInteractiveMode(c *client.Client, sigCh <-chan os.Signal) {
 			}
 		case "test_reconnect":
 			testReconnectFunction(c)
+		case "before":
+			message := "测试notify在response之前"
+			if len(parts) > 1 {
+				message = strings.Join(parts[1:], " ")
+			}
+			params := map[string]string{"message": message}
+			fmt.Println("发送before指令 - notify应该在response之前到达...")
+			sendBusinessRequest(c, "before", params, nil)
+		case "after":
+			message := "测试notify在response之后"
+			if len(parts) > 1 {
+				message = strings.Join(parts[1:], " ")
+			}
+			params := map[string]string{"message": message}
+			fmt.Println("发送after指令 - notify应该在response之后到达...")
+			sendBusinessRequest(c, "after", params, nil)
 		default:
 			fmt.Printf("未知命令: %s\n", cmd)
 		}
@@ -706,7 +724,7 @@ func sendBusinessRequest(c *client.Client, action string, params map[string]stri
 		return
 	}
 
-	fmt.Printf("响应: [%d] %s\n", resp.Code, resp.Message)
+	fmt.Printf("📬 收到RESPONSE [%s]: [%d] %s\n", time.Now().Format("15:04:05.000"), resp.Code, resp.Message)
 	if len(resp.Data) > 0 {
 		fmt.Printf("数据: %s\n", string(resp.Data))
 	}
