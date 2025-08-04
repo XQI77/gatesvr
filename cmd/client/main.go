@@ -259,9 +259,30 @@ func runPerformanceClient(ctx context.Context, clientIndex int, serverAddr, open
 
 	log.Printf("客户端 %d 已连接", clientIndex)
 
-	// 测试动作列表
-	actions := []string{"echo", "time", "hello", "calculate", "status", "session_info"}
+	// 首次发送hello消息进行登录
+	log.Printf("客户端 %d 正在进行登录...", clientIndex)
+	loginSuccess := sendLoginRequest(c, clientIndex)
+	if !loginSuccess {
+		log.Printf("客户端 %d 登录失败，退出", clientIndex)
+		return
+	}
+	log.Printf("客户端 %d 登录成功", clientIndex)
+
+	// Performance test main loop
+	runPerformanceLoop(ctx, c, clientIndex, requestInterval, maxRequests, stats, sigCh)
+}
+
+// runPerformanceLoop 运行性能测试主循环
+func runPerformanceLoop(ctx context.Context, c *client.Client, clientIndex int,
+	requestInterval time.Duration, maxRequests int, stats *PerformanceStats, sigCh <-chan os.Signal) {
+
+	// 扩展的测试动作列表
+	actions := []string{
+		"echo", "time", "calculate", "status", "session_info",
+		"business_msg", "heartbeat", "data_sync", "notification",
+	}
 	requestCount := 0
+	reconnectCount := 0
 
 	ticker := time.NewTicker(requestInterval)
 	defer ticker.Stop()
@@ -276,6 +297,19 @@ func runPerformanceClient(ctx context.Context, clientIndex int, serverAddr, open
 			if maxRequests > 0 && requestCount >= maxRequests {
 				log.Printf("客户端 %d 达到最大请求数 %d", clientIndex, maxRequests)
 				return
+			}
+
+			// 随机决定是否进行短线重连测试 (10% 概率)
+			if rand.Intn(100) < 10 && reconnectCount < 3 {
+				log.Printf("客户端 %d 执行短线重连测试", clientIndex)
+				if performReconnectTest(ctx, c, clientIndex, stats) {
+					reconnectCount++
+					log.Printf("客户端 %d 重连成功", clientIndex)
+				} else {
+					log.Printf("客户端 %d 重连失败", clientIndex)
+					return
+				}
+				continue
 			}
 
 			// 随机选择一个动作
@@ -300,8 +334,9 @@ func sendRandomRequest(c *client.Client, action string, clientIndex, requestCoun
 	case "echo":
 		data = []byte(fmt.Sprintf("Hello from client %d - request %d", clientIndex, requestCount))
 
-	case "hello":
-		params = map[string]string{"name": fmt.Sprintf("Client-%d", clientIndex)}
+	case "time":
+		// 获取服务器时间
+		params = map[string]string{"format": "2006-01-02 15:04:05"}
 
 	case "calculate":
 		operations := []string{"add", "subtract", "multiply", "divide"}
@@ -316,6 +351,51 @@ func sendRandomRequest(c *client.Client, action string, clientIndex, requestCoun
 			"a":         fmt.Sprintf("%d", a),
 			"b":         fmt.Sprintf("%d", b),
 		}
+
+	case "status":
+		// 获取服务器状态
+		params = map[string]string{"type": "system"}
+
+	case "session_info":
+		// 获取会话信息
+		params = map[string]string{"detail": "true"}
+
+	case "business_msg":
+		// 发送业务消息
+		params = map[string]string{
+			"type":     "test",
+			"content":  fmt.Sprintf("Business message from client %d", clientIndex),
+			"priority": fmt.Sprintf("%d", rand.Intn(5)+1),
+		}
+		data = []byte(fmt.Sprintf("Business data %d-%d", clientIndex, requestCount))
+
+	case "heartbeat":
+		// 手动心跳测试
+		params = map[string]string{
+			"client_time": fmt.Sprintf("%d", time.Now().Unix()),
+			"sequence":    fmt.Sprintf("%d", requestCount),
+		}
+
+	case "data_sync":
+		// 数据同步测试
+		params = map[string]string{
+			"sync_type": "incremental",
+			"last_sync": fmt.Sprintf("%d", time.Now().Add(-time.Hour).Unix()),
+		}
+		data = []byte(fmt.Sprintf(`{"client_id":%d,"data":"sync_test_%d"}`, clientIndex, requestCount))
+
+	case "notification":
+		// 通知测试
+		params = map[string]string{
+			"notify_type": "test",
+			"target":      "all",
+			"message":     fmt.Sprintf("Test notification from client %d", clientIndex),
+		}
+
+	default:
+		// 默认发送echo
+		data = []byte(fmt.Sprintf("Unknown action %s from client %d - request %d", action, clientIndex, requestCount))
+		action = "echo"
 	}
 
 	_, err := c.SendBusinessRequestWithTimeout(action, params, data, 5*time.Second)
@@ -658,11 +738,11 @@ func testReconnectFunction(c *client.Client) {
 	fmt.Println("\n========================================")
 	fmt.Println("         短线重连测试")
 	fmt.Println("========================================")
-	
+
 	// 步骤1: 显示初始状态
 	stats := c.GetStats()
 	fmt.Printf("初始状态 - 业务序列号: %v\n", stats["next_business_seq"])
-	
+
 	// 步骤2: 发送几个业务请求
 	fmt.Println("步骤1: 发送初始业务请求...")
 	for i := 1; i <= 3; i++ {
@@ -675,11 +755,11 @@ func testReconnectFunction(c *client.Client) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	
+
 	// 显示断线前状态
 	stats = c.GetStats()
 	fmt.Printf("断线前状态 - 业务序列号: %v\n", stats["next_business_seq"])
-	
+
 	// 步骤3: 强制断开连接保持状态
 	fmt.Println("\n步骤2: 强制断开连接(保持重连状态)...")
 	if err := c.ForceDisconnect(); err != nil {
@@ -687,10 +767,10 @@ func testReconnectFunction(c *client.Client) {
 		return
 	}
 	fmt.Println("连接已断开，重连状态已保存")
-	
+
 	// 等待一下
 	time.Sleep(2 * time.Second)
-	
+
 	// 步骤4: 重新连接
 	fmt.Println("\n步骤3: 重新连接(保持序列号连续性)...")
 	ctx := context.Background()
@@ -699,11 +779,11 @@ func testReconnectFunction(c *client.Client) {
 		return
 	}
 	fmt.Println("重连成功")
-	
+
 	// 显示重连后状态
 	stats = c.GetStats()
 	fmt.Printf("重连后状态 - 业务序列号: %v\n", stats["next_business_seq"])
-	
+
 	// 步骤5: 发送重连后的业务请求（序列号应该继续）
 	fmt.Println("\n步骤4: 发送重连后的业务请求(序列号应该继续)...")
 	for i := 4; i <= 6; i++ {
@@ -716,15 +796,64 @@ func testReconnectFunction(c *client.Client) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	
+
 	// 显示最终状态
 	stats = c.GetStats()
 	fmt.Printf("\n最终状态 - 业务序列号: %v\n", stats["next_business_seq"])
-	
+
 	fmt.Println("========================================")
 	fmt.Println("短线重连测试完成")
 	fmt.Println("如果业务序列号保持连续，说明重连功能正常")
 	fmt.Println("========================================\n")
+}
+
+// sendLoginRequest 发送登录请求
+func sendLoginRequest(c *client.Client, clientIndex int) bool {
+	params := map[string]string{
+		"name":      fmt.Sprintf("PerfClient-%d", clientIndex),
+		"version":   "1.0",
+		"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+	}
+
+	_, err := c.SendBusinessRequest("hello", params, nil)
+	if err != nil {
+		log.Printf("客户端 %d 登录请求失败: %v", clientIndex, err)
+		return false
+	}
+
+	return true
+}
+
+// performReconnectTest 执行短线重连测试
+func performReconnectTest(ctx context.Context, c *client.Client, clientIndex int, stats *PerformanceStats) bool {
+	startTime := time.Now()
+
+	// 强制断开连接
+	if err := c.ForceDisconnect(); err != nil {
+		log.Printf("客户端 %d 强制断开失败: %v", clientIndex, err)
+		stats.AddRequest(false, time.Since(startTime))
+		return false
+	}
+
+	// 短暂等待
+	time.Sleep(500 * time.Millisecond)
+
+	// 重新连接
+	if err := c.Reconnect(ctx); err != nil {
+		log.Printf("客户端 %d 重连失败: %v", clientIndex, err)
+		stats.AddRequest(false, time.Since(startTime))
+		return false
+	}
+
+	// 重新登录
+	if !sendLoginRequest(c, clientIndex) {
+		log.Printf("客户端 %d 重连后登录失败", clientIndex)
+		stats.AddRequest(false, time.Since(startTime))
+		return false
+	}
+
+	stats.AddRequest(true, time.Since(startTime))
+	return true
 }
 
 // getBuildTime 获取构建时间

@@ -27,6 +27,12 @@ type Manager struct {
 	// 用于停止清理goroutine
 	stopCh chan struct{}
 	wg     sync.WaitGroup
+
+	// 备份同步相关
+	syncEnabled    bool                                                    // 是否启用同步
+	syncCallback   func(sessionID string, session *Session, event string) // 同步回调函数
+	syncCallbackMux sync.RWMutex                                          // 保护同步回调的锁
+	backupMode     bool                                                    // 是否为备份模式（只读）
 }
 
 // NewManager 创建新的会话管理器
@@ -125,6 +131,13 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 	// 启动会话清理协程
 	m.wg.Add(1)
 	go m.sessionCleanupRoutine(newSession)
+
+	// 触发同步回调
+	if isReconnect {
+		m.triggerSyncCallback(sessionID, newSession, "session_reconnected")
+	} else {
+		m.triggerSyncCallback(sessionID, newSession, "session_created")
+	}
 
 	return newSession, isReconnect
 }
@@ -355,6 +368,9 @@ func (m *Manager) ActivateSession(sessionID string, gid int64, zone int64) error
 		}
 		m.sessionsByGID[gid] = session
 	}
+
+	// 触发同步回调
+	m.triggerSyncCallback(sessionID, session, "session_activated")
 
 	fmt.Printf("会话激活成功 - 会话: %s, GID: %d, Zone: %d\n", sessionID, gid, zone)
 	return nil
@@ -607,6 +623,9 @@ func (m *Manager) immediateRemoveSession(sessionID string) {
 	m.sessionsMux.Unlock()
 
 	if exists {
+		// 触发同步回调
+		m.triggerSyncCallback(sessionID, session, "session_deleted")
+		
 		// 清理该会话的所有缓存消息（现在由OrderedMessageQueue处理）
 		// m.messageCache.RemoveSession(sessionID)
 		session.Close()
@@ -679,4 +698,214 @@ func (m *Manager) GetOnlineUserCount() int {
 		}
 	}
 	return count
+}
+
+// EnableSync 启用同步功能
+func (m *Manager) EnableSync(callback func(sessionID string, session *Session, event string)) {
+	m.syncCallbackMux.Lock()
+	defer m.syncCallbackMux.Unlock()
+	
+	m.syncEnabled = true
+	m.syncCallback = callback
+	fmt.Printf("会话管理器同步功能已启用\n")
+}
+
+// DisableSync 禁用同步功能
+func (m *Manager) DisableSync() {
+	m.syncCallbackMux.Lock()
+	defer m.syncCallbackMux.Unlock()
+	
+	m.syncEnabled = false
+	m.syncCallback = nil
+	fmt.Printf("会话管理器同步功能已禁用\n")
+}
+
+// SetBackupMode 设置备份模式
+func (m *Manager) SetBackupMode(backupMode bool) {
+	m.backupMode = backupMode
+	if backupMode {
+		fmt.Printf("会话管理器进入备份模式（只读）\n")
+	} else {
+		fmt.Printf("会话管理器退出备份模式\n")
+	}
+}
+
+// IsBackupMode 检查是否为备份模式
+func (m *Manager) IsBackupMode() bool {
+	return m.backupMode
+}
+
+// triggerSyncCallback 触发同步回调
+func (m *Manager) triggerSyncCallback(sessionID string, session *Session, event string) {
+	if !m.syncEnabled {
+		return
+	}
+
+	m.syncCallbackMux.RLock()
+	callback := m.syncCallback
+	m.syncCallbackMux.RUnlock()
+
+	if callback != nil {
+		// 异步调用回调，避免阻塞主流程
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("同步回调执行异常: %v\n", r)
+				}
+			}()
+			callback(sessionID, session, event)
+		}()
+	}
+}
+
+// RestoreSession 从同步数据恢复会话（备份模式专用）
+func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
+	if !m.backupMode {
+		return fmt.Errorf("只有备份模式才能恢复会话")
+	}
+
+	m.sessionsMux.Lock()
+	defer m.sessionsMux.Unlock()
+
+	// 从同步数据创建会话对象
+	sessionID, ok := sessionData["session_id"].(string)
+	if !ok || sessionID == "" {
+		return fmt.Errorf("无效的会话ID")
+	}
+
+	// 创建基础会话对象（不包含连接）
+	restoredSession := &Session{
+		ID:           sessionID,
+		Connection:   nil, // 备份模式下无连接
+		Stream:       nil, // 备份模式下无流
+		CreateTime:   time.Now(),
+		LastActivity: time.Now(),
+		closeCh:      make(chan struct{}),
+	}
+
+	// 恢复基本信息
+	if openID, ok := sessionData["open_id"].(string); ok {
+		restoredSession.OpenID = openID
+	}
+	if clientID, ok := sessionData["client_id"].(string); ok {
+		restoredSession.ClientID = clientID
+	}
+	if accessToken, ok := sessionData["access_token"].(string); ok {
+		restoredSession.AccessToken = accessToken
+	}
+	if userIP, ok := sessionData["user_ip"].(string); ok {
+		restoredSession.UserIP = userIP
+	}
+
+	// 恢复状态信息
+	if state, ok := sessionData["state"].(float64); ok {
+		restoredSession.state = int32(state)
+	}
+	if gid, ok := sessionData["gid"].(float64); ok {
+		restoredSession.gid = int64(gid)
+	}
+	if zone, ok := sessionData["zone"].(float64); ok {
+		restoredSession.zone = int64(zone)
+	}
+
+	// 恢复序列号信息
+	if serverSeq, ok := sessionData["server_seq"].(float64); ok {
+		restoredSession.serverSeq = uint64(serverSeq)
+	}
+	if maxClientSeq, ok := sessionData["max_client_seq"].(float64); ok {
+		restoredSession.maxClientSeq = uint64(maxClientSeq)
+	}
+
+	// 注册到各个索引
+	m.sessions[sessionID] = restoredSession
+	if restoredSession.OpenID != "" {
+		m.sessionsByUID[restoredSession.OpenID] = restoredSession
+	}
+	if restoredSession.gid != 0 {
+		m.sessionsByGID[restoredSession.gid] = restoredSession
+	}
+
+	fmt.Printf("恢复会话成功 - 会话: %s, OpenID: %s, GID: %d\n", 
+		sessionID, restoredSession.OpenID, restoredSession.gid)
+	
+	return nil
+}
+
+// GetSessionSyncData 获取会话同步数据
+func (m *Manager) GetSessionSyncData(sessionID string) (map[string]interface{}, error) {
+	session, exists := m.GetSession(sessionID)
+	if !exists {
+		return nil, fmt.Errorf("会话不存在: %s", sessionID)
+	}
+
+	return map[string]interface{}{
+		"session_id":     session.ID,
+		"open_id":       session.OpenID,
+		"client_id":     session.ClientID,
+		"access_token":  session.AccessToken,
+		"user_ip":       session.UserIP,
+		"state":         session.State(),
+		"gid":           session.Gid(),
+		"zone":          session.Zone(),
+		"server_seq":    session.ServerSeq(),
+		"max_client_seq": session.MaxClientSeq(),
+		"create_time":   session.CreateTime,
+		"last_activity": session.LastActivity,
+	}, nil
+}
+
+// ValidateSessionData 校验会话数据完整性
+func (m *Manager) ValidateSessionData() map[string]interface{} {
+	m.sessionsMux.RLock()
+	defer m.sessionsMux.RUnlock()
+
+	stats := map[string]interface{}{
+		"total_sessions":     len(m.sessions),
+		"gid_indexed":       len(m.sessionsByGID),
+		"uid_indexed":       len(m.sessionsByUID),
+		"valid_sessions":    0,
+		"invalid_sessions":  0,
+		"closed_sessions":   0,
+		"inconsistencies":   make([]string, 0),
+	}
+
+	validCount := 0
+	invalidCount := 0
+	closedCount := 0
+	inconsistencies := make([]string, 0)
+
+	for sessionID, session := range m.sessions {
+		if session == nil {
+			invalidCount++
+			inconsistencies = append(inconsistencies, fmt.Sprintf("空会话对象: %s", sessionID))
+			continue
+		}
+
+		if session.IsClosed() {
+			closedCount++
+			continue
+		}
+
+		validCount++
+
+		// 检查索引一致性
+		if session.OpenID != "" {
+			if indexedSession, exists := m.sessionsByUID[session.OpenID]; !exists || indexedSession.ID != sessionID {
+				inconsistencies = append(inconsistencies, fmt.Sprintf("UID索引不一致: %s", sessionID))
+			}
+		}
+
+		if session.Gid() != 0 {
+			if indexedSession, exists := m.sessionsByGID[session.Gid()]; !exists || indexedSession.ID != sessionID {
+				inconsistencies = append(inconsistencies, fmt.Sprintf("GID索引不一致: %s", sessionID))
+			}
+		}
+	}
+
+	stats["valid_sessions"] = validCount
+	stats["invalid_sessions"] = invalidCount
+	stats["closed_sessions"] = closedCount
+	stats["inconsistencies"] = inconsistencies
+
+	return stats
 }

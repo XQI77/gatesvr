@@ -12,6 +12,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"google.golang.org/grpc"
 
+	"gatesvr/internal/backup"
 	"gatesvr/internal/message"
 	"gatesvr/internal/session"
 	"gatesvr/pkg/metrics"
@@ -42,6 +43,9 @@ type Server struct {
 	metricsServer *metrics.MetricsServer
 	grpcServer    *grpc.Server
 
+	// 备份管理器
+	backupManager backup.BackupManager // 备份管理器
+
 	// 状态管理
 	running      bool
 	runningMutex sync.RWMutex
@@ -69,6 +73,17 @@ func NewServer(config *Config) *Server {
 	server.messageCodec.SetReadLatencyCallback(func(latency time.Duration) {
 		server.performanceTracker.RecordReadLatency(latency)
 	})
+
+	// 初始化备份管理器
+	if config.BackupConfig != nil && config.BackupConfig.Sync.Enabled {
+		server.backupManager = backup.NewBackupManager(config.BackupConfig, config.ServerID)
+		server.backupManager.RegisterSessionManager(server.sessionManager)
+		
+		// 设置会话管理器的同步回调
+		server.sessionManager.EnableSync(server.onSessionSync)
+		
+		log.Printf("备份管理器已初始化 - 服务器ID: %s, 模式: %d", config.ServerID, config.BackupConfig.Sync.Mode)
+	}
 
 	return server
 }
@@ -105,6 +120,15 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// 启动会话管理器
 	s.sessionManager.Start(ctx)
+
+	// 启动备份管理器
+	if s.backupManager != nil {
+		if err := s.backupManager.Start(ctx); err != nil {
+			log.Printf("启动备份管理器失败: %v", err)
+		} else {
+			log.Printf("备份管理器已启动")
+		}
+	}
 
 	// 启动连接处理器
 	s.wg.Add(1)
@@ -153,6 +177,15 @@ func (s *Server) Stop() {
 		s.grpcServer.GracefulStop()
 	}
 
+	// 停止备份管理器
+	if s.backupManager != nil {
+		if err := s.backupManager.Stop(); err != nil {
+			log.Printf("停止备份管理器失败: %v", err)
+		} else {
+			log.Printf("备份管理器已停止")
+		}
+	}
+
 	// 停止会话管理器
 	s.sessionManager.Stop()
 
@@ -165,4 +198,67 @@ func (s *Server) Stop() {
 	s.wg.Wait()
 
 	log.Printf("网关服务器已停止")
+}
+
+// onSessionSync 会话同步回调函数
+func (s *Server) onSessionSync(sessionID string, session *session.Session, event string) {
+	if s.backupManager == nil {
+		return
+	}
+
+	// 根据事件类型触发相应的同步
+	switch event {
+	case "session_created", "session_reconnected", "session_activated":
+		// 同步会话数据
+		log.Printf("同步会话事件: %s - 会话: %s", event, sessionID)
+		// 这里可以调用备份管理器的同步方法
+		// 由于BackupManager接口没有直接的同步方法，这里暂时记录日志
+		
+	case "session_deleted":
+		// 同步会话删除
+		log.Printf("同步会话删除: %s", sessionID)
+		
+	default:
+		log.Printf("未知会话同步事件: %s - 会话: %s", event, sessionID)
+	}
+}
+
+// GetBackupStats 获取备份统计信息
+func (s *Server) GetBackupStats() map[string]interface{} {
+	if s.backupManager == nil {
+		return map[string]interface{}{
+			"backup_enabled": false,
+		}
+	}
+	
+	stats := s.backupManager.GetStats()
+	stats["backup_enabled"] = true
+	return stats
+}
+
+// SwitchBackupMode 切换备份模式
+func (s *Server) SwitchBackupMode(mode backup.ServerMode) error {
+	if s.backupManager == nil {
+		return fmt.Errorf("备份功能未启用")
+	}
+	
+	return s.backupManager.SwitchMode(mode)
+}
+
+// TriggerBackupSync 手动触发备份同步
+func (s *Server) TriggerBackupSync() error {
+	if s.backupManager == nil {
+		return fmt.Errorf("备份功能未启用")
+	}
+	
+	return s.backupManager.TriggerSync()
+}
+
+// TriggerFailover 手动触发故障切换
+func (s *Server) TriggerFailover() error {
+	if s.backupManager == nil {
+		return fmt.Errorf("备份功能未启用")
+	}
+	
+	return s.backupManager.TriggerFailover()
 }

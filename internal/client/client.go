@@ -913,7 +913,7 @@ func (c *Client) sendStartMessage() error {
 
 		return fmt.Errorf("收到非预期的响应类型: %d", response.Type)
 
-	case <-time.After(1000 * time.Second):
+	case <-time.After(10 * time.Second):
 		return fmt.Errorf("start消息超时")
 	}
 }

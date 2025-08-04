@@ -1,7 +1,11 @@
 // Package gateway 提供网关服务器配置管理
 package gateway
 
-import "time"
+import (
+	"time"
+
+	"gatesvr/internal/backup"
+)
 
 // Config 网关服务器配置
 type Config struct {
@@ -20,4 +24,8 @@ type Config struct {
 	SessionTimeout time.Duration // 会话超时时间
 	AckTimeout     time.Duration // ACK超时时间
 	MaxRetries     int           // 最大重试次数
+
+	// 备份配置
+	BackupConfig *backup.BackupConfig // 热备份配置
+	ServerID     string               // 服务器ID
 }

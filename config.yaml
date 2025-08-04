@@ -1,0 +1,37 @@
+# 网关服务器配置文件
+server:
+  # 服务器地址配置
+  quic_addr: ":8443"         # QUIC监听地址
+  http_addr: ":8080"         # HTTP API监听地址
+  grpc_addr: ":8082"         # gRPC服务监听地址
+  metrics_addr: ":9090"      # 监控指标监听地址
+  upstream_addr: "localhost:9000"  # 上游gRPC服务地址
+
+  # TLS配置
+  cert_file: "D:/25cxx/v3/certs/server.crt"  # TLS证书文件路径
+  key_file: "D:/25cxx/v3/certs/server.key"   # TLS私钥文件路径
+
+  # 会话配置
+  session_timeout: "5m"      # 会话超时时间
+  ack_timeout: "10s"         # ACK超时时间
+  max_retries: 3             # 最大重试次数
+
+# 备份配置
+backup:
+  enabled: true              # 启用热备份功能
+  mode: "primary"            # 备份模式: primary(主) 或 backup(备)
+  server_id: "primary-1"     # 服务器ID
+  readonly: false            # 只读模式（备份服务器使用）
+  
+  # 心跳配置
+  heartbeat:
+    interval: "2s"           # 心跳间隔
+    peer_addr: "localhost:8455"  # 备份服务器心跳端口(主服务器发送心跳到此)
+    timeout: "10s"           # 心跳超时时间
+    
+  # 同步配置  
+  sync:
+    peer_addr: "localhost:8456"  # 备份服务器同步端口(主服务器发送同步数据到此)
+    batch_size: 50           # 同步批次大小
+    timeout: "200ms"         # 同步超时
+    buffer_size: 1000        # 同步缓冲区大小
