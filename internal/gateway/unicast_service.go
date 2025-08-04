@@ -9,6 +9,7 @@ import (
 
 	"gatesvr/internal/session"
 	pb "gatesvr/proto"
+
 	"google.golang.org/protobuf/proto"
 )
 
@@ -47,88 +48,6 @@ func (s *Server) PushToClient(ctx context.Context, req *pb.UnicastPushRequest) (
 		Message:   message,
 		ErrorCode: errorCode,
 	}, nil
-}
-
-// handleUnicastToSession 处理到会话的单播推送
-func (s *Server) handleUnicastToSession(sessionID, msgType, title, content string, data []byte) error {
-	session, exists := s.sessionManager.GetSession(sessionID)
-	if !exists {
-		return fmt.Errorf("会话不存在: %s", sessionID)
-	}
-
-	// 检查会话状态
-	if !session.IsNormal() {
-		// 会话未激活，缓存消息
-		return s.cacheMessageForSession(sessionID, msgType, title, content, data)
-	}
-
-	// 会话已激活，直接发送
-	return s.sendUnicastMessage(session, msgType, title, content, data)
-}
-
-// handleUnicastToGID 处理到GID的单播推送
-func (s *Server) handleUnicastToGID(gid int64, msgType, title, content string, data []byte) error {
-	session, exists := s.sessionManager.GetSessionByGID(gid)
-	if !exists {
-		// GID对应的会话不存在，可能用户未登录，缓存消息
-		return s.cacheMessageForGID(gid, msgType, title, content, data)
-	}
-
-	// 检查会话状态
-	if !session.IsNormal() {
-		// 会话未激活，缓存消息
-		return s.cacheMessageForSession(session.ID, msgType, title, content, data)
-	}
-
-	// 会话已激活，直接发送
-	return s.sendUnicastMessage(session, msgType, title, content, data)
-}
-
-// handleUnicastToOpenID 处理到OpenID的单播推送
-func (s *Server) handleUnicastToOpenID(openID, msgType, title, content string, data []byte) error {
-	session, exists := s.sessionManager.GetSessionByOpenID(openID)
-	if !exists {
-		// OpenID对应的会话不存在，可能用户未连接，缓存消息
-		return s.cacheMessageForOpenID(openID, msgType, title, content, data)
-	}
-
-	// 检查会话状态
-	if !session.IsNormal() {
-		// 会话未激活，缓存消息
-		return s.cacheMessageForSession(session.ID, msgType, title, content, data)
-	}
-
-	// 会话已激活，直接发送
-	return s.sendUnicastMessage(session, msgType, title, content, data)
-}
-
-// sendUnicastMessage 发送单播消息到已激活的会话
-func (s *Server) sendUnicastMessage(session *session.Session, msgType, title, content string, data []byte) error {
-	if session.IsClosed() {
-		return fmt.Errorf("会话已关闭: %s", session.ID)
-	}
-
-	// 构造BusinessResponse格式的消息（确保客户端能正确解析）
-	businessResp := &pb.BusinessResponse{
-		Code:    200,
-		Message: fmt.Sprintf("[%s] %s", msgType, title),
-		Data:    data,
-	}
-
-	// 序列化BusinessResponse
-	payload, err := proto.Marshal(businessResp)
-	if err != nil {
-		return fmt.Errorf("序列化单播BusinessResponse失败: %v", err)
-	}
-
-	// 发送推送消息（使用有序发送器，gatesvr自动分配序列号）
-	if err := s.orderedSender.PushBusinessData(session, payload); err != nil {
-		log.Printf("发送推送消息失败: %v", err)
-		return fmt.Errorf("发送推送消息失败: %w", err)
-	}
-
-	log.Printf("单播推送成功 - 会话: %s, 类型: %s, 标题: %s", session.ID, msgType, title)
-	return nil
 }
 
 // cacheMessageForSession 为会话缓存消息
@@ -312,32 +231,32 @@ func (s *Server) processNotifyMessage(session *session.Session, req *pb.UnicastP
 		if grid == 0 {
 			return fmt.Errorf("bind_client_seq_id is required for NSH_BEFORE_RESPONSE")
 		}
-		
+
 		// 创建NotifyBindMsgItem
 		notifyItem := s.createNotifyBindMsgItem(req)
 		if !session.AddNotifyBindBeforeRsp(grid, notifyItem) {
 			return fmt.Errorf("failed to bind notify before response for grid: %d", grid)
 		}
-		
+
 		log.Printf("Notify消息已绑定到response之前 - grid: %d, 会话: %s", grid, session.ID)
 		return nil
-		
+
 	case pb.NotifySyncHint_NSH_AFTER_RESPONSE:
 		// 绑定到指定response之后发送
 		grid := uint32(req.BindClientSeqId)
 		if grid == 0 {
 			return fmt.Errorf("bind_client_seq_id is required for NSH_AFTER_RESPONSE")
 		}
-		
+
 		// 创建NotifyBindMsgItem
 		notifyItem := s.createNotifyBindMsgItem(req)
 		if !session.AddNotifyBindAfterRsp(grid, notifyItem) {
 			return fmt.Errorf("failed to bind notify after response for grid: %d", grid)
 		}
-		
+
 		log.Printf("Notify消息已绑定到response之后 - grid: %d, 会话: %s", grid, session.ID)
 		return nil
-		
+
 	case pb.NotifySyncHint_NSH_IMMEDIATELY:
 		fallthrough
 	default:
@@ -347,17 +266,17 @@ func (s *Server) processNotifyMessage(session *session.Session, req *pb.UnicastP
 			Message: fmt.Sprintf("[%s] %s", req.MsgType, req.Title),
 			Data:    req.Data,
 		}
-		
+
 		// 序列化BusinessResponse
 		payload, err := proto.Marshal(businessResp)
 		if err != nil {
 			return fmt.Errorf("序列化立即notify BusinessResponse失败: %w", err)
 		}
-		
+
 		if err := s.orderedSender.PushBusinessData(session, payload); err != nil {
 			return fmt.Errorf("发送立即notify失败: %w", err)
 		}
-		
+
 		log.Printf("立即notify消息发送成功 - 会话: %s, 类型: %s, 标题: %s", session.ID, req.MsgType, req.Title)
 		return nil
 	}
@@ -372,7 +291,7 @@ func (s *Server) createNotifyBindMsgItem(req *pb.UnicastPushRequest) *session.No
 		// 使用原始数据作为备选
 		notifyData = req.Data
 	}
-	
+
 	return &session.NotifyBindMsgItem{
 		NotifyData: notifyData,
 		MsgType:    req.MsgType,

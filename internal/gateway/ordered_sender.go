@@ -48,10 +48,11 @@ func (oms *OrderedMessageSender) SendOrderedMessage(sess *session.Session, push 
 	}
 
 	// 设置发送回调函数（如果尚未设置）
-	if orderedQueue.GetLastSentSeq() == 0 && orderedQueue.GetNextExpectedSeq() == 1 {
+	if orderedQueue.GetSendCallback() == nil {
 		orderedQueue.SetSendCallback(func(orderedMsg *session.OrderedMessage) error {
 			return oms.sendMessageDirectly(sess, orderedMsg)
 		})
+		log.Printf("为会话设置发送回调函数 - 会话: %s", sess.ID)
 	}
 
 	// 将消息加入有序队列

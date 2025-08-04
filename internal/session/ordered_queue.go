@@ -107,6 +107,11 @@ func (omq *OrderedMessageQueue) SetSendCallback(callback func(*OrderedMessage) e
 	omq.sendCallback = callback
 }
 
+// GetSendCallback 检查是否已设置发送回调函数
+func (omq *OrderedMessageQueue) GetSendCallback() func(*OrderedMessage) error {
+	return omq.sendCallback
+}
+
 // EnqueueMessage 将消息加入队列
 func (omq *OrderedMessageQueue) EnqueueMessage(serverSeq uint64, push *pb.ServerPush, data []byte) error {
 	omq.queueMux.Lock()

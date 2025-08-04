@@ -525,6 +525,9 @@ func runInteractiveMode(c *client.Client, sigCh <-chan os.Signal) {
 	fmt.Println("  status                   - 服务状态")
 	fmt.Println("  session_info             - 会话管理器状态")
 	fmt.Println("  stats                    - 客户端状态")
+	fmt.Println("  disconnect               - 断开连接（保持重连状态）")
+	fmt.Println("  reconnect                - 重新连接（保持序列号连续性）")
+	fmt.Println("  test_reconnect           - 测试短线重连功能")
 	fmt.Println("  quit/exit                - 退出")
 	fmt.Println("========================================")
 	fmt.Println()
@@ -587,6 +590,23 @@ func runInteractiveMode(c *client.Client, sigCh <-chan os.Signal) {
 			stats := c.GetStats()
 			data, _ := json.MarshalIndent(stats, "", "  ")
 			fmt.Printf("客户端统计:\n%s\n", data)
+		case "disconnect":
+			fmt.Println("正在强制断开连接(保持重连状态)...")
+			if err := c.ForceDisconnect(); err != nil {
+				fmt.Printf("断开连接失败: %v\n", err)
+			} else {
+				fmt.Println("已断开连接，重连状态已保存")
+			}
+		case "reconnect":
+			fmt.Println("正在重新连接(保持序列号连续性)...")
+			ctx := context.Background()
+			if err := c.Reconnect(ctx); err != nil {
+				fmt.Printf("重连失败: %v\n", err)
+			} else {
+				fmt.Println("重连成功，序列号已恢复")
+			}
+		case "test_reconnect":
+			testReconnectFunction(c)
 		default:
 			fmt.Printf("未知命令: %s\n", cmd)
 		}
@@ -631,6 +651,80 @@ func printStartupInfo(config *client.Config) {
 	fmt.Printf("心跳间隔:     %v\n", config.HeartbeatInterval)
 	fmt.Println("========================================")
 	fmt.Println()
+}
+
+// testReconnectFunction 测试短线重连功能
+func testReconnectFunction(c *client.Client) {
+	fmt.Println("\n========================================")
+	fmt.Println("         短线重连测试")
+	fmt.Println("========================================")
+	
+	// 步骤1: 显示初始状态
+	stats := c.GetStats()
+	fmt.Printf("初始状态 - 业务序列号: %v\n", stats["next_business_seq"])
+	
+	// 步骤2: 发送几个业务请求
+	fmt.Println("步骤1: 发送初始业务请求...")
+	for i := 1; i <= 3; i++ {
+		message := fmt.Sprintf("断线前的消息 #%d", i)
+		resp, err := c.SendBusinessRequestWithTimeout("echo", nil, []byte(message), 5*time.Second)
+		if err != nil {
+			fmt.Printf("  请求 %d 失败: %v\n", i, err)
+		} else {
+			fmt.Printf("  请求 %d 成功: [%d] %s\n", i, resp.Code, resp.Message)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	
+	// 显示断线前状态
+	stats = c.GetStats()
+	fmt.Printf("断线前状态 - 业务序列号: %v\n", stats["next_business_seq"])
+	
+	// 步骤3: 强制断开连接保持状态
+	fmt.Println("\n步骤2: 强制断开连接(保持重连状态)...")
+	if err := c.ForceDisconnect(); err != nil {
+		fmt.Printf("断开连接失败: %v\n", err)
+		return
+	}
+	fmt.Println("连接已断开，重连状态已保存")
+	
+	// 等待一下
+	time.Sleep(2 * time.Second)
+	
+	// 步骤4: 重新连接
+	fmt.Println("\n步骤3: 重新连接(保持序列号连续性)...")
+	ctx := context.Background()
+	if err := c.Reconnect(ctx); err != nil {
+		fmt.Printf("重连失败: %v\n", err)
+		return
+	}
+	fmt.Println("重连成功")
+	
+	// 显示重连后状态
+	stats = c.GetStats()
+	fmt.Printf("重连后状态 - 业务序列号: %v\n", stats["next_business_seq"])
+	
+	// 步骤5: 发送重连后的业务请求（序列号应该继续）
+	fmt.Println("\n步骤4: 发送重连后的业务请求(序列号应该继续)...")
+	for i := 4; i <= 6; i++ {
+		message := fmt.Sprintf("重连后的消息 #%d", i)
+		resp, err := c.SendBusinessRequestWithTimeout("echo", nil, []byte(message), 5*time.Second)
+		if err != nil {
+			fmt.Printf("  请求 %d 失败: %v\n", i, err)
+		} else {
+			fmt.Printf("  请求 %d 成功: [%d] %s\n", i, resp.Code, resp.Message)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	
+	// 显示最终状态
+	stats = c.GetStats()
+	fmt.Printf("\n最终状态 - 业务序列号: %v\n", stats["next_business_seq"])
+	
+	fmt.Println("========================================")
+	fmt.Println("短线重连测试完成")
+	fmt.Println("如果业务序列号保持连续，说明重连功能正常")
+	fmt.Println("========================================\n")
 }
 
 // getBuildTime 获取构建时间

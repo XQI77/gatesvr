@@ -133,7 +133,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		log.Printf("发送业务响应失败: %v", err)
 		return false
 	}
-	
+
 	// 如果需要处理绑定的notify消息，使用保序机制
 	grid := uint32(req.SeqId)
 	if err := s.processBoundNotifies(sess, grid); err != nil {
@@ -250,45 +250,6 @@ func (s *Server) handleAck(sess *session.Session, req *pb.ClientRequest) bool {
 		log.Printf("ACK确认无效 - 序列号: %d, 会话: %s", ack.AckedSeqId, sess.ID)
 		return false
 	}
-}
-
-// sendServerPush 发送服务器推送消息
-func (s *Server) sendServerPush(sess *session.Session, push *pb.ServerPush) bool {
-	// 编码消息 - 记录编码时延
-	encodeStart := time.Now()
-	data, err := s.messageCodec.EncodeServerPush(push)
-	encodeLatency := time.Since(encodeStart)
-	s.performanceTracker.RecordEncodeLatency(encodeLatency)
-
-	if err != nil {
-		log.Printf("编码推送消息失败: %v", err)
-		s.metrics.IncError("encode_error")
-		return false
-	}
-
-	// 发送消息 - 记录发送时延
-	sendStart := time.Now()
-	if err := s.messageCodec.WriteMessage(sess.Stream, data); err != nil {
-		log.Printf("发送推送消息失败: %v", err)
-		s.metrics.IncError("send_error")
-		return false
-	}
-	sendLatency := time.Since(sendStart)
-	s.performanceTracker.RecordSendLatency(sendLatency)
-
-	// 添加到待确认队列
-	s.sessionManager.AddPendingMessage(sess.ID, push.SeqId, data)
-
-	// 更新指标
-	s.metrics.AddThroughput("outbound", int64(len(data)))
-	s.metrics.SetOutboundQueueSize(sess.ID, s.sessionManager.GetPendingCount(sess.ID))
-	s.performanceTracker.RecordBytes(int64(len(data)))
-
-	log.Printf("发送推送消息 - 类型: %d, 序列号: %d, 会话: %s, 编码时延: %.2fms, 发送时延: %.2fms",
-		push.Type, push.SeqId, sess.ID,
-		encodeLatency.Seconds()*1000,
-		sendLatency.Seconds()*1000)
-	return true
 }
 
 // sendErrorResponse 发送错误响应
@@ -445,13 +406,13 @@ func (s *Server) processBoundNotifies(sess *session.Session, grid uint32) error 
 		log.Printf("发送before-notify失败: %v", err)
 		return err
 	}
-	
+
 	// 发送绑定在response之后的notify消息
 	if err := s.sendAfterNotifies(sess, grid); err != nil {
 		log.Printf("发送after-notify失败: %v", err)
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -460,12 +421,12 @@ func (s *Server) sendBeforeNotifies(sess *session.Session, grid uint32) error {
 	if sess.GetOrderingManager() == nil {
 		return nil
 	}
-	
+
 	beforeNotifies := sess.GetOrderingManager().GetAndRemoveBeforeNotifies(grid)
 	if len(beforeNotifies) == 0 {
 		return nil
 	}
-	
+
 	for _, notifyItem := range beforeNotifies {
 		// 使用有序发送器发送notify，gatesvr自动分配序列号
 		if err := s.orderedSender.PushBusinessData(sess, notifyItem.NotifyData); err != nil {
@@ -474,7 +435,7 @@ func (s *Server) sendBeforeNotifies(sess *session.Session, grid uint32) error {
 		}
 		log.Printf("发送before-notify成功 - 会话: %s, 类型: %s", sess.ID, notifyItem.MsgType)
 	}
-	
+
 	return nil
 }
 
@@ -483,12 +444,12 @@ func (s *Server) sendAfterNotifies(sess *session.Session, grid uint32) error {
 	if sess.GetOrderingManager() == nil {
 		return nil
 	}
-	
+
 	afterNotifies := sess.GetOrderingManager().GetAndRemoveAfterNotifies(grid)
 	if len(afterNotifies) == 0 {
 		return nil
 	}
-	
+
 	for _, notifyItem := range afterNotifies {
 		// 使用有序发送器发送notify，gatesvr自动分配序列号
 		if err := s.orderedSender.PushBusinessData(sess, notifyItem.NotifyData); err != nil {
@@ -497,6 +458,6 @@ func (s *Server) sendAfterNotifies(sess *session.Session, grid uint32) error {
 		}
 		log.Printf("发送after-notify成功 - 会话: %s, 类型: %s", sess.ID, notifyItem.MsgType)
 	}
-	
+
 	return nil
 }

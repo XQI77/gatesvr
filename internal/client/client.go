@@ -29,6 +29,14 @@ type Config struct {
 	HeartbeatInterval time.Duration // 心跳间隔
 }
 
+// ReconnectState 重连状态
+type ReconnectState struct {
+	lastAckedSeqId uint64 // 最后确认的服务器序列号
+	businessSeq    uint64 // 当前业务序列号
+	openID         string // OpenID
+	mutex          sync.RWMutex
+}
+
 // Client QUIC客户端
 type Client struct {
 	config *Config
@@ -51,6 +59,9 @@ type Client struct {
 
 	// 性能监控 - 新增
 	latencyTracker *ClientLatencyTracker
+
+	// 重连状态保持
+	reconnectState *ReconnectState
 
 	// 停止控制
 	stopCh chan struct{}
@@ -202,10 +213,15 @@ func NewClient(config *Config) *Client {
 		config.OpenID = generateRandomOpenID()
 	}
 
+	reconnectState := &ReconnectState{
+		openID: config.OpenID,
+	}
+
 	return &Client{
 		config:         config,
 		messageCodec:   message.NewMessageCodec(),
-		latencyTracker: NewClientLatencyTracker(), // 新增
+		latencyTracker: NewClientLatencyTracker(),
+		reconnectState: reconnectState,
 		stopCh:         make(chan struct{}),
 	}
 }
@@ -292,8 +308,18 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect 断开连接
+// Disconnect 断开连接（正常断开）
 func (c *Client) Disconnect() error {
+	return c.disconnect(false)
+}
+
+// ForceDisconnect 强制断开连接（不发送stop消息，保持重连状态）
+func (c *Client) ForceDisconnect() error {
+	return c.disconnect(true)
+}
+
+// disconnect 内部断开连接实现
+func (c *Client) disconnect(force bool) error {
 	c.connectedMux.Lock()
 	if !c.connected {
 		c.connectedMux.Unlock()
@@ -302,11 +328,18 @@ func (c *Client) Disconnect() error {
 	c.connected = false
 	c.connectedMux.Unlock()
 
-	log.Printf("正在断开连接...")
-
-	// 发送stop消息通知服务器
-	if err := c.sendStopMessage(pb.StopRequest_USER_LOGOUT); err != nil {
-		log.Printf("发送stop消息失败: %v", err)
+	if force {
+		log.Printf("正在强制断开连接(保持重连状态)...")
+		// 保存重连状态
+		c.saveReconnectState()
+	} else {
+		log.Printf("正在断开连接...")
+		// 发送stop消息通知服务器
+		if err := c.sendStopMessage(pb.StopRequest_USER_LOGOUT); err != nil {
+			log.Printf("发送stop消息失败: %v", err)
+		}
+		// 清理重连状态
+		c.clearReconnectState()
 	}
 
 	// 发送停止信号
@@ -337,6 +370,185 @@ func (c *Client) Disconnect() error {
 
 	log.Printf("已断开连接")
 	return nil
+}
+
+// saveReconnectState 保存重连状态
+func (c *Client) saveReconnectState() {
+	c.reconnectState.mutex.Lock()
+	defer c.reconnectState.mutex.Unlock()
+	
+	// 保存当前业务序列号
+	c.reconnectState.businessSeq = atomic.LoadUint64(&c.nextBusinessSeq)
+	log.Printf("保存重连状态 - 业务序列号: %d, 最后确认服务器序号: %d", 
+		c.reconnectState.businessSeq, c.reconnectState.lastAckedSeqId)
+}
+
+// clearReconnectState 清理重连状态
+func (c *Client) clearReconnectState() {
+	c.reconnectState.mutex.Lock()
+	defer c.reconnectState.mutex.Unlock()
+	
+	c.reconnectState.lastAckedSeqId = 0
+	c.reconnectState.businessSeq = 0
+	log.Printf("已清理重连状态")
+}
+
+// restoreReconnectState 恢复重连状态
+func (c *Client) restoreReconnectState() {
+	c.reconnectState.mutex.RLock()
+	defer c.reconnectState.mutex.RUnlock()
+	
+	if c.reconnectState.businessSeq > 0 {
+		// 恢复业务序列号
+		atomic.StoreUint64(&c.nextBusinessSeq, c.reconnectState.businessSeq)
+		log.Printf("恢复重连状态 - 业务序列号: %d, 最后确认服务器序号: %d", 
+			c.reconnectState.businessSeq, c.reconnectState.lastAckedSeqId)
+	}
+}
+
+// Reconnect 重新连接（保持序列号连续性）
+func (c *Client) Reconnect(ctx context.Context) error {
+	log.Printf("开始重新连接...")
+	
+	// 先断开现有连接（如果有）
+	if c.IsConnected() {
+		c.ForceDisconnect()
+	}
+	
+	// 重置停止信号
+	c.stopCh = make(chan struct{})
+	
+	// 恢复重连状态
+	c.restoreReconnectState()
+	
+	// 配置TLS
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.config.TLSSkipVerify,
+		NextProtos:         []string{"gatesvr"},
+	}
+
+	// 连接超时控制
+	connectCtx := ctx
+	if c.config.ConnectTimeout > 0 {
+		var cancel context.CancelFunc
+		connectCtx, cancel = context.WithTimeout(ctx, c.config.ConnectTimeout)
+		defer cancel()
+	}
+
+	// 建立QUIC连接
+	conn, err := quic.DialAddr(connectCtx, c.config.ServerAddr, tlsConfig, nil)
+	if err != nil {
+		return fmt.Errorf("QUIC重连失败: %w", err)
+	}
+	c.connection = conn
+
+	// 打开双向流
+	stream, err := conn.OpenStreamSync(connectCtx)
+	if err != nil {
+		conn.CloseWithError(0, "open stream failed")
+		return fmt.Errorf("打开流失败: %w", err)
+	}
+	c.stream = stream
+
+	// 更新连接状态
+	c.connectedMux.Lock()
+	c.connected = true
+	c.connectedMux.Unlock()
+
+	// 启动消息处理goroutines
+	c.wg.Add(2)
+	go c.messageReceiver(ctx)
+	go c.heartbeatSender(ctx)
+
+	// 发送start消息带上最后确认的序列号
+	if err := c.sendStartMessageWithLastAcked(); err != nil {
+		c.disconnect(true) // 重连失败时保持状态
+		return fmt.Errorf("发送start消息失败: %w", err)
+	}
+
+	log.Printf("重连成功: %s, OpenID: %s, 业务序列号: %d", 
+		c.config.ServerAddr, c.config.OpenID, atomic.LoadUint64(&c.nextBusinessSeq))
+	return nil
+}
+
+// updateLastAckedSeqId 更新最后确认的服务器序列号
+func (c *Client) updateLastAckedSeqId(seqId uint64) {
+	c.reconnectState.mutex.Lock()
+	defer c.reconnectState.mutex.Unlock()
+	
+	if seqId > c.reconnectState.lastAckedSeqId {
+		c.reconnectState.lastAckedSeqId = seqId
+	}
+}
+
+// sendStartMessageWithLastAcked 发送带有最后确认序列号的start消息
+func (c *Client) sendStartMessageWithLastAcked() error {
+	if c.config.OpenID == "" {
+		return fmt.Errorf("OpenID不能为空")
+	}
+
+	msgID := c.getNextMsgID()
+	
+	// 获取最后确认的序列号
+	c.reconnectState.mutex.RLock()
+	lastAckedSeqId := c.reconnectState.lastAckedSeqId
+	c.reconnectState.mutex.RUnlock()
+
+	// 创建start请求（带上lastAckedSeqId）
+	req := c.messageCodec.CreateStartRequest(msgID, 0, c.config.OpenID, "default-token", lastAckedSeqId)
+
+	// 创建待响应请求
+	pendingReq := &PendingRequest{
+		MsgID:     msgID,
+		StartTime: time.Now(),
+		Response:  make(chan *pb.ServerPush, 1),
+		Timeout:   10 * time.Second, // start消息10秒超时
+	}
+
+	// 注册待响应请求
+	c.pendingRequests.Store(msgID, pendingReq)
+	defer c.pendingRequests.Delete(msgID)
+
+	// 发送请求
+	if err := c.sendRequest(req); err != nil {
+		return fmt.Errorf("发送start请求失败: %w", err)
+	}
+
+	log.Printf("已发送start消息(重连) - OpenID: %s, 消息ID: %d, lastAckedSeqId: %d", 
+		c.config.OpenID, msgID, lastAckedSeqId)
+
+	// 等待响应
+	select {
+	case response := <-pendingReq.Response:
+		if response == nil {
+			return fmt.Errorf("连接已关闭")
+		}
+
+		// 解析start响应
+		if response.Type == pb.PushType_PUSH_START_RESP {
+			startResp := &pb.StartResponse{}
+			if err := proto.Unmarshal(response.Payload, startResp); err != nil {
+				return fmt.Errorf("解析start响应失败: %w", err)
+			}
+
+			if !startResp.Success {
+				errorMsg := "未知错误"
+				if startResp.Error != nil {
+					errorMsg = startResp.Error.ErrorMessage
+				}
+				return fmt.Errorf("start消息被服务器拒绝: %s", errorMsg)
+			}
+
+			log.Printf("start消息成功(重连) - 连接ID: %s, 心跳间隔: %d秒",
+				startResp.ConnectionId, startResp.HeartbeatInterval)
+			return nil
+		}
+
+		return fmt.Errorf("收到非预期的响应类型: %d", response.Type)
+
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("start消息超时")
+	}
 }
 
 // IsConnected 检查是否已连接
@@ -473,13 +685,15 @@ func (c *Client) handleServerPush(push *pb.ServerPush) {
 	log.Printf("收到服务器推送 - 类型: %d, 消息ID: %d, 序列号: %d",
 		push.Type, push.MsgId, push.SeqId)
 
-	// 发送ACK确认
+	// 发送ACK确认并更新重连状态
 	if push.SeqId > 0 {
 		ackMsg := c.messageCodec.CreateAckMessage(push.SeqId, c.config.OpenID)
 		if err := c.sendRequest(ackMsg); err != nil {
 			log.Printf("发送ACK失败: %v", err)
 		} else {
 			log.Printf("发送ACK确认 - 序列号: %d", push.SeqId)
+			// 更新最后确认的服务器序列号
+			c.updateLastAckedSeqId(push.SeqId)
 		}
 	}
 
@@ -699,7 +913,7 @@ func (c *Client) sendStartMessage() error {
 
 		return fmt.Errorf("收到非预期的响应类型: %d", response.Type)
 
-	case <-time.After(100 * time.Second):
+	case <-time.After(1000 * time.Second):
 		return fmt.Errorf("start消息超时")
 	}
 }

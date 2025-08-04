@@ -18,9 +18,6 @@ type Manager struct {
 	sessionsByUID map[string]*Session // 按用户ID索引的会话（支持重连检测）
 	sessionsMux   sync.RWMutex        // 保护sessions的读写锁
 
-	// 消息缓存管理器（已废弃，由OrderedMessageQueue替代）
-	// messageCache *MessageCache
-
 	// 超时配置
 	sessionTimeout      time.Duration // 会话超时时间
 	ackTimeout          time.Duration // ACK超时时间
@@ -103,7 +100,7 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 
 	// 初始化有序消息队列
 	newSession.orderedQueue = NewOrderedMessageQueue(sessionID, 1000) // 最大队列长度1000
-	
+
 	// 初始化消息排序管理器 - 新增
 	newSession.orderingManager = NewMessageOrderingManager()
 
