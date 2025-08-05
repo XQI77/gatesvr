@@ -50,6 +50,13 @@ func (s *Server) startHTTPServer() error {
 	mux.HandleFunc("/latency/detailed", s.handleDetailedLatency)
 	mux.HandleFunc("/latency/breakdown", s.handleLatencyBreakdown)
 	mux.HandleFunc("/latency/client", s.handleClientLatency)
+	mux.HandleFunc("/latency/business", s.handleBusinessRequestLatency)     // 业务请求详细时延分析
+	mux.HandleFunc("/latency/send-ordered", s.handleSendOrderedMessageLatency) // SendOrderedMessage详细时延分析
+	
+	// 异步队列优化监控API端点
+	mux.HandleFunc("/queue/async-stats", s.handleAsyncQueueStats)           // 异步队列统计信息
+	mux.HandleFunc("/queue/optimization", s.handleQueueOptimizationAnalysis) // 队列优化分析
+	mux.HandleFunc("/queue/config", s.handleQueueConfig)                    // 队列配置管理
 	
 	// START消息处理器监控API
 	mux.HandleFunc("/start-processor", s.handleStartProcessor)

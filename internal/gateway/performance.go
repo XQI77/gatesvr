@@ -27,13 +27,31 @@ type PerformanceTracker struct {
 // DetailedLatencyTracker 详细时延跟踪器
 type DetailedLatencyTracker struct {
 	// 各阶段时延统计
-	parseLatency    *StageLatencyStats // 消息解析时延
-	upstreamLatency *StageLatencyStats // 上游调用时延
-	encodeLatency   *StageLatencyStats // 响应编码时延
-	sendLatency     *StageLatencyStats // 消息发送时延
-	totalLatency    *StageLatencyStats // 总处理时延
-	readLatency     *StageLatencyStats // 消息读取时延（新增）
-	processLatency  *StageLatencyStats // 消息处理时延（纯处理，不含读取等待）
+	parseLatency      *StageLatencyStats // 消息解析时延
+	upstreamLatency   *StageLatencyStats // 上游调用时延
+	encodeLatency     *StageLatencyStats // 响应编码时延
+	sendLatency       *StageLatencyStats // 消息发送时延
+	totalLatency      *StageLatencyStats // 总处理时延
+	readLatency       *StageLatencyStats // 消息读取时延（新增）
+	processLatency    *StageLatencyStats // 消息处理时延（纯处理，不含读取等待）
+	
+	// handleBusinessRequest详细阶段时延统计
+	seqValidateLatency    *StageLatencyStats // 序列号验证时延
+	stateValidateLatency  *StageLatencyStats // 状态验证时延
+	buildReqLatency       *StageLatencyStats // 构造请求时延
+	loginProcessLatency   *StageLatencyStats // 登录处理时延
+	sendRespLatency       *StageLatencyStats // 发送响应时延
+	processNotifyLatency  *StageLatencyStats // 处理notify时延
+	
+	// SendOrderedMessage详细阶段时延统计
+	seqAllocLatency       *StageLatencyStats // 序列号分配时延
+	msgEncodeLatency      *StageLatencyStats // 消息编码时延  
+	queueGetLatency       *StageLatencyStats // 获取队列时延
+	callbackSetLatency    *StageLatencyStats // 设置回调函数时延
+	enqueueLatency        *StageLatencyStats // 消息入队时延
+	directSendLatency     *StageLatencyStats // 直接发送时延
+	writeMessageLatency   *StageLatencyStats // 写消息时延
+	metricsUpdateLatency  *StageLatencyStats // 指标更新时延
 }
 
 // StageLatencyStats 阶段时延统计
@@ -158,6 +176,24 @@ func NewDetailedLatencyTracker() *DetailedLatencyTracker {
 		totalLatency:    NewStageLatencyStats(),
 		readLatency:     NewStageLatencyStats(), // 新增
 		processLatency:  NewStageLatencyStats(), // 新增
+		
+		// handleBusinessRequest详细阶段
+		seqValidateLatency:    NewStageLatencyStats(),
+		stateValidateLatency:  NewStageLatencyStats(),
+		buildReqLatency:       NewStageLatencyStats(),
+		loginProcessLatency:   NewStageLatencyStats(),
+		sendRespLatency:       NewStageLatencyStats(),
+		processNotifyLatency:  NewStageLatencyStats(),
+		
+		// SendOrderedMessage详细阶段
+		seqAllocLatency:       NewStageLatencyStats(),
+		msgEncodeLatency:      NewStageLatencyStats(),
+		queueGetLatency:       NewStageLatencyStats(),
+		callbackSetLatency:    NewStageLatencyStats(),
+		enqueueLatency:        NewStageLatencyStats(),
+		directSendLatency:     NewStageLatencyStats(),
+		writeMessageLatency:   NewStageLatencyStats(),
+		metricsUpdateLatency:  NewStageLatencyStats(),
 	}
 }
 
@@ -196,6 +232,64 @@ func (dt *DetailedLatencyTracker) RecordProcessLatency(latency time.Duration) {
 	dt.processLatency.Record(latency)
 }
 
+// handleBusinessRequest详细阶段记录方法
+func (dt *DetailedLatencyTracker) RecordSeqValidateLatency(latency time.Duration) {
+	dt.seqValidateLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordStateValidateLatency(latency time.Duration) {
+	dt.stateValidateLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordBuildReqLatency(latency time.Duration) {
+	dt.buildReqLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordLoginProcessLatency(latency time.Duration) {
+	dt.loginProcessLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordSendRespLatency(latency time.Duration) {
+	dt.sendRespLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordProcessNotifyLatency(latency time.Duration) {
+	dt.processNotifyLatency.Record(latency)
+}
+
+// SendOrderedMessage详细阶段记录方法
+func (dt *DetailedLatencyTracker) RecordSeqAllocLatency(latency time.Duration) {
+	dt.seqAllocLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordMsgEncodeLatency(latency time.Duration) {
+	dt.msgEncodeLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordQueueGetLatency(latency time.Duration) {
+	dt.queueGetLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordCallbackSetLatency(latency time.Duration) {
+	dt.callbackSetLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordEnqueueLatency(latency time.Duration) {
+	dt.enqueueLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordDirectSendLatency(latency time.Duration) {
+	dt.directSendLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordWriteMessageLatency(latency time.Duration) {
+	dt.writeMessageLatency.Record(latency)
+}
+
+func (dt *DetailedLatencyTracker) RecordMetricsUpdateLatency(latency time.Duration) {
+	dt.metricsUpdateLatency.Record(latency)
+}
+
 // GetDetailedStats 获取详细统计
 func (dt *DetailedLatencyTracker) GetDetailedStats() map[string]interface{} {
 	return map[string]interface{}{
@@ -206,6 +300,24 @@ func (dt *DetailedLatencyTracker) GetDetailedStats() map[string]interface{} {
 		"total_latency":    dt.totalLatency.GetStats(),
 		"read_latency":     dt.readLatency.GetStats(),    // 新增
 		"process_latency":  dt.processLatency.GetStats(), // 新增
+		
+		// handleBusinessRequest详细阶段统计
+		"seq_validate_latency":   dt.seqValidateLatency.GetStats(),
+		"state_validate_latency": dt.stateValidateLatency.GetStats(),
+		"build_req_latency":      dt.buildReqLatency.GetStats(),
+		"login_process_latency":  dt.loginProcessLatency.GetStats(),
+		"send_resp_latency":      dt.sendRespLatency.GetStats(),
+		"process_notify_latency": dt.processNotifyLatency.GetStats(),
+		
+		// SendOrderedMessage详细阶段统计
+		"seq_alloc_latency":       dt.seqAllocLatency.GetStats(),
+		"msg_encode_latency":      dt.msgEncodeLatency.GetStats(),
+		"queue_get_latency":       dt.queueGetLatency.GetStats(),
+		"callback_set_latency":    dt.callbackSetLatency.GetStats(),
+		"enqueue_latency":         dt.enqueueLatency.GetStats(),
+		"direct_send_latency":     dt.directSendLatency.GetStats(),
+		"write_message_latency":   dt.writeMessageLatency.GetStats(),
+		"metrics_update_latency":  dt.metricsUpdateLatency.GetStats(),
 	}
 }
 
@@ -291,6 +403,64 @@ func (pt *PerformanceTracker) RecordReadLatency(latency time.Duration) {
 // RecordProcessLatency 记录处理时延（纯处理，不含读取等待）
 func (pt *PerformanceTracker) RecordProcessLatency(latency time.Duration) {
 	pt.detailedLatencyTracker.RecordProcessLatency(latency)
+}
+
+// handleBusinessRequest详细阶段记录方法 - PerformanceTracker级别
+func (pt *PerformanceTracker) RecordSeqValidateLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordSeqValidateLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordStateValidateLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordStateValidateLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordBuildReqLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordBuildReqLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordLoginProcessLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordLoginProcessLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordSendRespLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordSendRespLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordProcessNotifyLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordProcessNotifyLatency(latency)
+}
+
+// SendOrderedMessage详细阶段记录方法 - PerformanceTracker级别
+func (pt *PerformanceTracker) RecordSeqAllocLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordSeqAllocLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordMsgEncodeLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordMsgEncodeLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordQueueGetLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordQueueGetLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordCallbackSetLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordCallbackSetLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordEnqueueLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordEnqueueLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordDirectSendLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordDirectSendLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordWriteMessageLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordWriteMessageLatency(latency)
+}
+
+func (pt *PerformanceTracker) RecordMetricsUpdateLatency(latency time.Duration) {
+	pt.detailedLatencyTracker.RecordMetricsUpdateLatency(latency)
 }
 
 // GetStats 获取性能统计数据

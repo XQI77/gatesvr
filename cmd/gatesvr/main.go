@@ -17,6 +17,9 @@ import (
 )
 
 func main() {
+	// 设置日志输出到文件，每次运行覆盖
+	setupLogToFile()
+
 	// 命令行参数
 	var (
 		configFile = flag.String("config", "config.yaml", "配置文件路径")
@@ -304,6 +307,28 @@ func printStartupInfo(config *gateway.Config) {
 	fmt.Printf("  性能监控:   http://%s/performance\n", config.HTTPAddr)
 	fmt.Printf("  监控指标:   http://%s/metrics\n", config.MetricsAddr)
 	fmt.Println()
+}
+
+// setupLogToFile 设置日志输出到文件
+func setupLogToFile() {
+	// 日志文件路径
+	logFile := "gatesvr.log"
+	
+	// 创建或覆盖日志文件
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		fmt.Printf("无法创建日志文件 %s: %v\n", logFile, err)
+		os.Exit(1)
+	}
+	
+	// 设置日志输出到文件
+	log.SetOutput(file)
+	
+	// 设置日志格式：时间 + 文件:行号 + 消息
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	
+	// 输出到控制台告知日志文件位置
+	fmt.Printf("日志已配置输出到文件: %s\n", logFile)
 }
 
 // getBuildTime 获取构建时间

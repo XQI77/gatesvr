@@ -49,12 +49,14 @@ func (s *Server) handleHeartbeat(sess *session.Session, req *pb.ClientRequest) b
 // handleBusinessRequest 处理业务请求
 func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Session, req *pb.ClientRequest) bool {
 	startTime := time.Now()
+	log.Printf("处理业务请求 - 动作: %s", sess.ID)
 	defer func() {
 		s.metrics.ObserveRequestDuration("business", time.Since(startTime))
 		s.performanceTracker.RecordTotalLatency(time.Since(startTime))
 	}()
 
-	// 验证业务消息序列号（业务消息必须有序列号）
+	// 验证业务消息序列号（业务消息必须有序列号） - 记录序列号验证时延
+	seqValidateStart := time.Now()
 	if !s.sessionManager.ValidateClientSequence(sess.ID, req.SeqId) {
 		expectedSeq := s.sessionManager.GetExpectedClientSequence(sess.ID)
 		log.Printf("业务消息序列号验证失败 - 会话: %s, 实际序列号: %d, 期待序列号: %d",
@@ -63,6 +65,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 			fmt.Sprintf("序列号必须递增且连续，期待: %d, 实际: %d", expectedSeq, req.SeqId))
 		return false
 	}
+	seqValidateLatency := time.Since(seqValidateStart)
 
 	// 解析业务请求 - 记录解析时延
 	parseStart := time.Now()
@@ -75,7 +78,8 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	parseLatency := time.Since(parseStart)
 	s.performanceTracker.RecordParseLatency(parseLatency)
 
-	// 检查是否为登录请求
+	// 检查是否为登录请求 - 记录状态验证时延
+	stateValidateStart := time.Now()
 	isLoginAction := s.isLoginAction(businessReq.Action)
 
 	// 验证会话状态权限
@@ -94,8 +98,10 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 			return false
 		}
 	}
+	stateValidateLatency := time.Since(stateValidateStart)
 
-	// 构造上游请求（添加客户端序列号）
+	// 构造上游请求（添加客户端序列号） - 记录构造请求时延
+	buildReqStart := time.Now()
 	upstreamReq := &pb.UpstreamRequest{
 		SessionId:   sess.ID,
 		Openid:      sess.OpenID,
@@ -105,6 +111,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		Headers:     req.Headers,
 		ClientSeqId: req.SeqId, // 传递客户端序列号
 	}
+	buildReqLatency := time.Since(buildReqStart)
 
 	// 调用上游服务 - 记录上游调用时延
 	upstreamStart := time.Now()
@@ -119,27 +126,47 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		return false
 	}
 
-	// 处理登录成功的情况
+	// 处理登录成功的情况 - 记录登录处理时延
+	var loginProcessLatency time.Duration
 	if isLoginAction && upstreamResp.Code == 200 {
+		loginProcessStart := time.Now()
 		if err := s.handleLoginSuccess(sess, upstreamResp); err != nil {
 			log.Printf("处理登录成功失败: %v", err)
 			s.sendErrorResponse(sess, req.MsgId, 500, "登录处理失败", err.Error())
 			return false
 		}
+		loginProcessLatency = time.Since(loginProcessStart)
 	}
 
-	// 发送业务响应（使用有序发送器，gatesvr统一管理序列号）
+	// 发送业务响应（使用有序发送器，gatesvr统一管理序列号） - 记录发送响应时延
+	sendRespStart := time.Now()
 	if err := s.orderedSender.SendBusinessResponse(sess, req.MsgId, upstreamResp.Code, upstreamResp.Message, upstreamResp.Data, upstreamResp.Headers); err != nil {
 		log.Printf("发送业务响应失败: %v", err)
 		return false
 	}
+	sendRespLatency := time.Since(sendRespStart)
 
-	// 如果需要处理绑定的notify消息，使用保序机制
+	// 如果需要处理绑定的notify消息，使用保序机制 - 记录notify处理时延
+	processNotifyStart := time.Now()
 	grid := uint32(req.SeqId)
 	if err := s.processBoundNotifies(sess, grid); err != nil {
 		log.Printf("处理绑定notify消息失败: %v", err)
 		// 不返回错误，因为主响应已经发送成功
 	}
+	processNotifyLatency := time.Since(processNotifyStart)
+
+	// 记录各阶段详细时延到性能跟踪器
+
+	s.performanceTracker.RecordSeqValidateLatency(seqValidateLatency)
+	s.performanceTracker.RecordParseLatency(parseLatency)
+	s.performanceTracker.RecordStateValidateLatency(stateValidateLatency)
+	s.performanceTracker.RecordBuildReqLatency(buildReqLatency)
+	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
+	if loginProcessLatency > 0 {
+		s.performanceTracker.RecordLoginProcessLatency(loginProcessLatency)
+	}
+	s.performanceTracker.RecordSendRespLatency(sendRespLatency)
+	s.performanceTracker.RecordProcessNotifyLatency(processNotifyLatency)
 
 	log.Printf("处理业务请求 - 动作: %s, 会话: %s, 响应码: %d, 时延: 解析=%.2fms, 上游=%.2fms",
 		businessReq.Action, sess.ID, upstreamResp.Code,
