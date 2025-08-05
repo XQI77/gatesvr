@@ -32,6 +32,7 @@ type Server struct {
 	metrics            *metrics.GateServerMetrics // 监控指标
 	performanceTracker *PerformanceTracker        // 性能追踪器
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
+	startProcessor     *StartMessageProcessor     // START消息异步处理器
 
 	// gRPC客户端
 	upstreamClient pb.UpstreamServiceClient
@@ -68,6 +69,24 @@ func NewServer(config *Config) *Server {
 	
 	// 初始化有序消息发送器
 	server.orderedSender = NewOrderedMessageSender(server)
+	
+	// 初始化START消息异步处理器
+	if config.StartProcessorConfig != nil && config.StartProcessorConfig.Enabled {
+		server.startProcessor = NewStartMessageProcessor(
+			server, 
+			config.StartProcessorConfig.MaxWorkers,
+			config.StartProcessorConfig.QueueSize,
+			config.StartProcessorConfig.Timeout,
+		)
+		log.Printf("START消息异步处理器已配置 - Workers: %d, 队列: %d, 超时: %v",
+			config.StartProcessorConfig.MaxWorkers,
+			config.StartProcessorConfig.QueueSize,
+			config.StartProcessorConfig.Timeout)
+	} else {
+		// 使用默认配置：100个worker，1000个任务队列，30秒超时
+		server.startProcessor = NewStartMessageProcessor(server, 100, 1000, 30*time.Second)
+		log.Printf("START消息异步处理器使用默认配置 - Workers: 100, 队列: 1000, 超时: 30s")
+	}
 
 	// 设置读取时延回调函数
 	server.messageCodec.SetReadLatencyCallback(func(latency time.Duration) {
@@ -120,6 +139,12 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// 启动会话管理器
 	s.sessionManager.Start(ctx)
+
+	// 启动START消息异步处理器
+	if s.startProcessor != nil {
+		s.startProcessor.Start()
+		log.Printf("START消息异步处理器已启动")
+	}
 
 	// 启动备份管理器
 	if s.backupManager != nil {
@@ -175,6 +200,12 @@ func (s *Server) Stop() {
 	// 停止gRPC服务器
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
+	}
+
+	// 停止START消息异步处理器
+	if s.startProcessor != nil {
+		s.startProcessor.Stop()
+		log.Printf("START消息异步处理器已停止")
 	}
 
 	// 停止备份管理器

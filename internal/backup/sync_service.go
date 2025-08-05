@@ -15,7 +15,7 @@ import (
 // SyncService 数据同步服务
 type SyncService struct {
 	config      *SyncConfig
-	syncAddr    string            // 同步地址（分离后的专用地址）
+	syncAddr    string // 同步地址（分离后的专用地址）
 	peerConn    net.Conn
 	connMux     sync.RWMutex
 	syncChan    chan *SyncMessage
@@ -267,7 +267,7 @@ func (s *SyncService) tryConnect() {
 
 	conn, err := net.DialTimeout("tcp", s.syncAddr, 10*time.Second)
 	if err != nil {
-		log.Printf("连接对端失败: %v", err)
+		//log.Printf("连接对端失败: %v", err)
 		s.updateStats(func(stats *SyncStats) {
 			stats.ErrorCount++
 			stats.IsConnected = false

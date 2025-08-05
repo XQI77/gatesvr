@@ -14,19 +14,19 @@ import (
 
 // syncReceiverImpl 同步接收器实现
 type syncReceiverImpl struct {
-	config       *SyncConfig
-	listenAddr   string                  // 监听地址（分离后的专用地址）
-	listener     net.Listener
-	sessionMgr   *session.Manager
-	stats        *SyncStats
-	statsMux     sync.RWMutex
-	ctx          context.Context
-	cancel       context.CancelFunc
-	stopped      bool
-	stopMux      sync.RWMutex
-	validator    DataValidator
-	connections  map[string]net.Conn
-	connMux      sync.RWMutex
+	config      *SyncConfig
+	listenAddr  string // 监听地址（分离后的专用地址）
+	listener    net.Listener
+	sessionMgr  *session.Manager
+	stats       *SyncStats
+	statsMux    sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	stopped     bool
+	stopMux     sync.RWMutex
+	validator   DataValidator
+	connections map[string]net.Conn
+	connMux     sync.RWMutex
 }
 
 // newSyncReceiver 创建同步接收器
@@ -382,7 +382,7 @@ func (r *syncReceiverImpl) updateLocalSession(syncData *SessionSyncData) error {
 	}
 
 	// 在实际实现中，这里需要根据同步数据创建或更新会话
-	// 由于当前的session.Manager没有直接的更新接口，这里暂时只记录日志
+	// 由于当前的session.Manager没有直接的更新接口，这里暂时只记录日志 TODO
 	log.Printf("同步更新会话: %s, OpenID: %s, GID: %d, 状态: %d",
 		syncData.SessionID, syncData.OpenID, syncData.Gid, syncData.State)
 

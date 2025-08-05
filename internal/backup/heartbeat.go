@@ -14,22 +14,22 @@ import (
 
 // HeartbeatService 心跳服务（支持发送和监听两种模式）
 type HeartbeatService struct {
-	config         *SyncConfig
-	mode           ServerMode
-	serverID       string
-	heartbeatAddr  string          // 心跳地址（分离后的专用地址）
-	
+	config        *SyncConfig
+	mode          ServerMode
+	serverID      string
+	heartbeatAddr string // 心跳地址（分离后的专用地址）
+
 	// 发送模式字段（主服务器使用）
-	peerConn       net.Conn
-	connMux        sync.RWMutex
-	reconnectCh    chan struct{}
-	
+	peerConn    net.Conn
+	connMux     sync.RWMutex
+	reconnectCh chan struct{}
+
 	// 监听模式字段（备份服务器使用）
-	listener       net.Listener
-	listenerMux    sync.RWMutex
-	connections    map[string]net.Conn
-	connMapMux     sync.RWMutex
-	
+	listener    net.Listener
+	listenerMux sync.RWMutex
+	connections map[string]net.Conn
+	connMapMux  sync.RWMutex
+
 	// 共用字段
 	sessionMgr     *session.Manager
 	lastPeerTime   int64
@@ -47,13 +47,13 @@ type HeartbeatService struct {
 
 // HeartbeatStats 心跳统计
 type HeartbeatStats struct {
-	SentCount       int64         `json:"sent_count"`
-	ReceivedCount   int64         `json:"received_count"`
-	FailedCount     int64         `json:"failed_count"`
-	LastSentTime    time.Time     `json:"last_sent_time"`
-	LastRecvTime    time.Time     `json:"last_recv_time"`
-	AverageLatency  time.Duration `json:"average_latency"`
-	ConsecutiveFails int          `json:"consecutive_fails"`
+	SentCount        int64         `json:"sent_count"`
+	ReceivedCount    int64         `json:"received_count"`
+	FailedCount      int64         `json:"failed_count"`
+	LastSentTime     time.Time     `json:"last_sent_time"`
+	LastRecvTime     time.Time     `json:"last_recv_time"`
+	AverageLatency   time.Duration `json:"average_latency"`
+	ConsecutiveFails int           `json:"consecutive_fails"`
 }
 
 // NewHeartbeatService 创建心跳服务
@@ -91,22 +91,22 @@ func (h *HeartbeatService) Start(ctx context.Context) error {
 	if h.mode == ModePrimary {
 		// 主服务器模式：启动发送功能
 		log.Printf("启动心跳发送服务 - 服务器ID: %s, 目标: %s", h.serverID, h.heartbeatAddr)
-		
+
 		// 启动连接管理协程
 		go h.connectionManager()
-		
+
 		// 启动心跳发送协程
 		go h.heartbeatSender()
-		
+
 	} else {
 		// 备份服务器模式：启动监听功能
 		log.Printf("启动心跳监听服务 - 服务器ID: %s, 监听: %s", h.serverID, h.heartbeatAddr)
-		
+
 		// 启动监听服务
 		if err := h.startListener(); err != nil {
 			return fmt.Errorf("启动心跳监听失败: %w", err)
 		}
-		
+
 		// 启动连接接收协程
 		go h.acceptConnections()
 	}
@@ -138,7 +138,7 @@ func (h *HeartbeatService) Stop() error {
 
 	// 关闭发送连接
 	h.closeConnection()
-	
+
 	// 关闭监听器
 	h.closeListener()
 
@@ -154,13 +154,13 @@ func (h *HeartbeatService) SendHeartbeat() error {
 
 	// 创建心跳数据
 	heartbeatData := &HeartbeatData{
-		ServerID:      h.serverID,
-		Mode:          h.mode,
-		Timestamp:     time.Now().UnixNano(),
-		SessionCount:  h.getSessionCount(),
-		QueueCount:    h.getQueueCount(),
-		IsHealthy:     h.isServerHealthy(),
-		LastSyncTime:  h.getLastSyncTime(),
+		ServerID:     h.serverID,
+		Mode:         h.mode,
+		Timestamp:    time.Now().UnixNano(),
+		SessionCount: h.getSessionCount(),
+		QueueCount:   h.getQueueCount(),
+		IsHealthy:    h.isServerHealthy(),
+		LastSyncTime: h.getLastSyncTime(),
 	}
 
 	// 创建心跳消息
@@ -299,7 +299,7 @@ func (h *HeartbeatService) tryConnect() {
 	// 使用分离的心跳地址
 	conn, err := net.DialTimeout("tcp", h.heartbeatAddr, 10*time.Second)
 	if err != nil {
-		log.Printf("心跳连接失败: %v", err)
+		//log.Printf("心跳连接失败: %v", err)
 		return
 	}
 
@@ -335,7 +335,7 @@ func (h *HeartbeatService) heartbeatSender() {
 			return
 		case <-ticker.C:
 			if err := h.SendHeartbeat(); err != nil {
-				log.Printf("心跳发送失败: %v", err)
+				//log.Printf("心跳发送失败: %v", err)
 			}
 		}
 	}
@@ -700,7 +700,7 @@ func (h *HeartbeatService) handleHeartbeatConnection(conn net.Conn, clientAddr s
 		if msg.Type == SyncTypeHeartbeat {
 			if heartbeatData, ok := msg.Data.(*HeartbeatData); ok {
 				h.OnHeartbeatReceived(heartbeatData)
-				
+
 				// 发送心跳响应
 				h.sendHeartbeatResponse(conn, heartbeatData)
 			}
@@ -712,13 +712,13 @@ func (h *HeartbeatService) handleHeartbeatConnection(conn net.Conn, clientAddr s
 func (h *HeartbeatService) sendHeartbeatResponse(conn net.Conn, receivedData *HeartbeatData) error {
 	// 创建响应数据
 	responseData := &HeartbeatData{
-		ServerID:      h.serverID,
-		Mode:          h.mode,
-		Timestamp:     time.Now().UnixNano(),
-		SessionCount:  h.getSessionCount(),
-		QueueCount:    h.getQueueCount(),
-		IsHealthy:     h.isServerHealthy(),
-		LastSyncTime:  h.getLastSyncTime(),
+		ServerID:     h.serverID,
+		Mode:         h.mode,
+		Timestamp:    time.Now().UnixNano(),
+		SessionCount: h.getSessionCount(),
+		QueueCount:   h.getQueueCount(),
+		IsHealthy:    h.isServerHealthy(),
+		LastSyncTime: h.getLastSyncTime(),
 	}
 
 	// 创建响应消息

@@ -18,7 +18,7 @@ server:
 
 # 备份配置
 backup:
-  enabled: true              # 启用热备份功能
+  enabled: false             # 启用热备份功能
   mode: "primary"            # 备份模式: primary(主) 或 backup(备)
   server_id: "primary-1"     # 服务器ID
   readonly: false            # 只读模式（备份服务器使用）

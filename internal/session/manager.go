@@ -13,10 +13,9 @@ import (
 
 // Manager 会话管理器
 type Manager struct {
-	sessions      map[string]*Session // 所有活跃会话（按sessionID索引）
-	sessionsByGID map[int64]*Session  // 按GID索引的会话
-	sessionsByUID map[string]*Session // 按用户ID索引的会话（支持重连检测）
-	sessionsMux   sync.RWMutex        // 保护sessions的读写锁
+	sessions      sync.Map // map[string]*Session - 所有活跃会话（按sessionID索引）
+	sessionsByGID sync.Map // map[int64]*Session - 按GID索引的会话
+	sessionsByUID sync.Map // map[string]*Session - 按用户ID索引的会话（支持重连检测）
 
 	// 超时配置
 	sessionTimeout      time.Duration // 会话超时时间
@@ -29,19 +28,16 @@ type Manager struct {
 	wg     sync.WaitGroup
 
 	// 备份同步相关
-	syncEnabled    bool                                                    // 是否启用同步
-	syncCallback   func(sessionID string, session *Session, event string) // 同步回调函数
-	syncCallbackMux sync.RWMutex                                          // 保护同步回调的锁
-	backupMode     bool                                                    // 是否为备份模式（只读）
+	syncEnabled     bool                                                   // 是否启用同步
+	syncCallback    func(sessionID string, session *Session, event string) // 同步回调函数
+	syncCallbackMux sync.RWMutex                                           // 保护同步回调的锁
+	backupMode      bool                                                   // 是否为备份模式（只读）
 }
 
 // NewManager 创建新的会话管理器
 func NewManager(sessionTimeout, ackTimeout time.Duration, maxRetries int) *Manager {
 	return &Manager{
-		sessions:      make(map[string]*Session),
-		sessionsByGID: make(map[int64]*Session),
-		sessionsByUID: make(map[string]*Session),
-		// messageCache:        NewMessageCache(DefaultTotalMemLimit, DefaultSessionMemLimit), // 已废弃
+		// sync.Map 无需初始化，零值即可用
 		sessionTimeout:      sessionTimeout,
 		ackTimeout:          ackTimeout,
 		maxRetries:          maxRetries,
@@ -52,27 +48,14 @@ func NewManager(sessionTimeout, ackTimeout time.Duration, maxRetries int) *Manag
 
 // CreateOrReconnectSession 创建或重连会话
 func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream, clientID, openID, accessToken, userIP string) (*Session, bool) {
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
-
-	// 检查是否有现有的会话（重连检测）
+	// 阶段1：无锁检查重连（超高并发性能）
 	var oldSession *Session
 	var isReconnect bool
 
-	// 1. 优先根据客户端ID检查重连
-	if clientID != "" {
-		for _, sess := range m.sessions {
-			if sess.ClientID == clientID && sess.OpenID == openID {
-				oldSession = sess
-				isReconnect = true
-				break
-			}
-		}
-	}
-
-	// 2. 如果没有找到，再根据OpenID检查重连
-	if oldSession == nil && openID != "" {
-		if existingSession, exists := m.sessionsByUID[openID]; exists {
+	// 直接使用OpenID进行O(1)重连检查，删除O(n)遍历
+	if openID != "" {
+		if value, exists := m.sessionsByUID.Load(openID); exists {
+			existingSession := value.(*Session)
 			// 检查是否可以重连（比如时间间隔不太长）
 			if time.Since(existingSession.LastActivity) < m.connectionDownDelay*2 {
 				oldSession = existingSession
@@ -81,7 +64,7 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 		}
 	}
 
-	// 创建新会话
+	// 阶段2：锁外创建新会话对象（耗时操作无锁并发）
 	sessionID := uuid.New().String()
 	newSession := &Session{
 		ID:           sessionID,
@@ -110,24 +93,37 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 	// 初始化消息排序管理器 - 新增
 	newSession.orderingManager = NewMessageOrderingManager()
 
+	// 阶段3：原子操作处理重连和注册（无锁高并发）
 	if isReconnect && oldSession != nil {
-		// 重连处理：继承旧会话数据
-		newSession.InheritFrom(oldSession)
-		newSession.SetSuccessor(true)
+		// 双重检查：确保重连状态仍然有效
+		if currentValue, exists := m.sessions.Load(oldSession.ID); exists {
+			if currentOldSession := currentValue.(*Session); currentOldSession == oldSession {
+				// 重连处理：继承旧会话数据
+				newSession.InheritFrom(oldSession)
+				newSession.SetSuccessor(true)
 
-		// 处理旧会话
-		m.handleOldSessionOnReconnect(oldSession, newSession)
+				// 原子操作处理旧会话
+				m.handleOldSessionOnReconnectAtomic(oldSession, newSession)
 
-		fmt.Printf("检测到重连 - 客户端: %s, 用户: %s, 旧会话: %s, 新会话: %s\n",
-			clientID, openID, oldSession.ID, newSession.ID)
+				fmt.Printf("检测到重连 - 客户端: %s, 用户: %s, 旧会话: %s, 新会话: %s\n",
+					clientID, openID, oldSession.ID, newSession.ID)
+			} else {
+				// 旧会话已被其他goroutine清理，取消重连状态
+				isReconnect = false
+			}
+		} else {
+			// 旧会话不存在，取消重连状态
+			isReconnect = false
+		}
 	}
 
-	// 注册新会话
-	m.sessions[sessionID] = newSession
+	// 原子注册新会话到所有索引
+	m.sessions.Store(sessionID, newSession)
 	if openID != "" {
-		m.sessionsByUID[openID] = newSession
+		m.sessionsByUID.Store(openID, newSession)
 	}
 
+	// 阶段4：锁外异步操作（不阻塞其他连接）
 	// 启动会话清理协程
 	m.wg.Add(1)
 	go m.sessionCleanupRoutine(newSession)
@@ -142,22 +138,28 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 	return newSession, isReconnect
 }
 
-// handleOldSessionOnReconnect 处理重连时的旧会话
-func (m *Manager) handleOldSessionOnReconnect(oldSession, newSession *Session) {
+// handleOldSessionOnReconnectAtomic 处理重连时的旧会话（原子操作版本）
+func (m *Manager) handleOldSessionOnReconnectAtomic(oldSession, newSession *Session) {
 	// 标记旧会话为关闭但不立即删除
 	oldSession.SetClosed()
 
-	// 从GID索引中移除旧会话
-	if gid := oldSession.Gid(); gid != 0 {
-		delete(m.sessionsByGID, gid)
-	}
+	// 先保存旧会话的GID，避免后续访问问题
+	oldGid := oldSession.Gid()
 
-	// 从主索引中移除旧会话
-	delete(m.sessions, oldSession.ID)
+	// 检查GID继承情况，决定是否需要保留GID索引
+	shouldPreserveGID := (newSession.Gid() == oldGid && oldGid != 0)
 
-	// 如果新会话继承了GID，需要防止旧会话清理时删除缓存
-	if newSession.Gid() == oldSession.Gid() && oldSession.Gid() != 0 {
-		oldSession.SetGid(0) // 重置旧会话的GID
+	// 从主索引中原子移除旧会话
+	m.sessions.Delete(oldSession.ID)
+
+	// 从GID索引中原子移除旧会话（但要考虑继承情况）
+	if oldGid != 0 && !shouldPreserveGID {
+		// 只有在新会话不继承GID时才删除GID索引
+		m.sessionsByGID.Delete(oldGid)
+	} else if shouldPreserveGID {
+		// 如果新会话继承GID，重置旧会话的GID防止清理时冲突
+		oldSession.SetGid(0)
+		// GID索引将指向新会话，不删除
 	}
 
 	// 延迟清理旧会话
@@ -169,22 +171,21 @@ func (m *Manager) handleOldSessionOnReconnect(oldSession, newSession *Session) {
 
 // GetSession 获取指定会话
 func (m *Manager) GetSession(sessionID string) (*Session, bool) {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
-	session, exists := m.sessions[sessionID]
-	return session, exists
+	if value, ok := m.sessions.Load(sessionID); ok {
+		return value.(*Session), true
+	}
+	return nil, false
 }
 
 // GetAllSessions 获取所有活跃会话
 func (m *Manager) GetAllSessions() []*Session {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
-	sessions := make([]*Session, 0, len(m.sessions))
-	for _, session := range m.sessions {
-		sessions = append(sessions, session)
-	}
+	sessions := make([]*Session, 0)
+	m.sessions.Range(func(key, value interface{}) bool {
+		if session := value.(*Session); session != nil {
+			sessions = append(sessions, session)
+		}
+		return true // 继续遍历
+	})
 	return sessions
 }
 
@@ -195,10 +196,12 @@ func (m *Manager) RemoveSession(sessionID string) {
 
 // GetSessionCount 获取会话总数
 func (m *Manager) GetSessionCount() int {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
-	return len(m.sessions)
+	count := 0
+	m.sessions.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 // Start 启动会话管理器
@@ -219,12 +222,25 @@ func (m *Manager) Stop() {
 	// }
 
 	// 关闭所有会话
-	m.sessionsMux.Lock()
-	for _, session := range m.sessions {
-		session.Close()
-	}
-	m.sessions = make(map[string]*Session)
-	m.sessionsMux.Unlock()
+	m.sessions.Range(func(key, value interface{}) bool {
+		if session := value.(*Session); session != nil {
+			session.Close()
+		}
+		return true
+	})
+	// 清空所有sync.Map（没有直接方法，需要逐个删除）
+	m.sessions.Range(func(key, value interface{}) bool {
+		m.sessions.Delete(key)
+		return true
+	})
+	m.sessionsByUID.Range(func(key, value interface{}) bool {
+		m.sessionsByUID.Delete(key)
+		return true
+	})
+	m.sessionsByGID.Range(func(key, value interface{}) bool {
+		m.sessionsByGID.Delete(key)
+		return true
+	})
 }
 
 // sessionCleanupRoutine 会话清理协程，处理ACK超时
@@ -283,21 +299,23 @@ func (m *Manager) checkAckTimeouts(session *Session) {
 
 // removeExpiredSessions 移除过期会话
 func (m *Manager) removeExpiredSessions() {
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
-
 	expiredSessions := make([]string, 0)
 
-	for sessionID, session := range m.sessions {
+	// 遍历找出过期会话
+	m.sessions.Range(func(key, value interface{}) bool {
+		sessionID := key.(string)
+		session := value.(*Session)
 		if session.IsExpired(m.sessionTimeout) {
 			expiredSessions = append(expiredSessions, sessionID)
 		}
-	}
+		return true
+	})
 
 	// 移除过期会话
 	for _, sessionID := range expiredSessions {
-		if session, exists := m.sessions[sessionID]; exists {
-			delete(m.sessions, sessionID)
+		if value, exists := m.sessions.Load(sessionID); exists {
+			session := value.(*Session)
+			m.sessions.Delete(sessionID)
 			session.Close()
 			fmt.Printf("会话 %s 已过期并被移除\n", sessionID)
 		}
@@ -346,13 +364,12 @@ func (m *Manager) AckMessagesUpTo(sessionID string, ackSeqID uint64) int {
 
 // ActivateSession 激活会话（处理登录成功后的会话激活）
 func (m *Manager) ActivateSession(sessionID string, gid int64, zone int64) error {
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
-
-	session, exists := m.sessions[sessionID]
+	value, exists := m.sessions.Load(sessionID)
 	if !exists {
 		return fmt.Errorf("会话不存在: %s", sessionID)
 	}
+
+	session := value.(*Session)
 
 	// 激活会话状态
 	if !session.ActivateSession(gid, zone) {
@@ -362,11 +379,14 @@ func (m *Manager) ActivateSession(sessionID string, gid int64, zone int64) error
 	// 绑定到GID索引
 	if gid != 0 {
 		// 检查GID是否已被占用
-		if existingSession, exists := m.sessionsByGID[gid]; exists && existingSession.ID != session.ID {
-			// 如果有旧会话占用相同GID，移除旧会话
-			m.immediateRemoveSession(existingSession.ID)
+		if existingValue, exists := m.sessionsByGID.Load(gid); exists {
+			existingSession := existingValue.(*Session)
+			if existingSession.ID != session.ID {
+				// 如果有旧会话占用相同GID，移除旧会话
+				m.immediateRemoveSession(existingSession.ID)
+			}
 		}
-		m.sessionsByGID[gid] = session
+		m.sessionsByGID.Store(gid, session)
 	}
 
 	// 触发同步回调
@@ -513,45 +533,46 @@ func (m *Manager) GetTotalCacheMemUsed() int64 {
 
 // GetSessionByGID 根据GID获取会话
 func (m *Manager) GetSessionByGID(gid int64) (*Session, bool) {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
-	session, exists := m.sessionsByGID[gid]
-	return session, exists
+	if value, ok := m.sessionsByGID.Load(gid); ok {
+		return value.(*Session), true
+	}
+	return nil, false
 }
 
 // GetSessionByOpenID 根据OpenID获取会话
 func (m *Manager) GetSessionByOpenID(openID string) (*Session, bool) {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
-	session, exists := m.sessionsByUID[openID]
-	return session, exists
+	if value, ok := m.sessionsByUID.Load(openID); ok {
+		return value.(*Session), true
+	}
+	return nil, false
 }
 
 // BindSession 绑定会话到各种索引（连接建立后调用）
 func (m *Manager) BindSession(session *Session) error {
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
-
 	// 绑定到OpenID索引（如果有的话）
 	if session.OpenID != "" {
 		// 检查OpenID是否已被占用
-		if existingSession, exists := m.sessionsByUID[session.OpenID]; exists && existingSession.ID != session.ID {
-			return fmt.Errorf("OpenID %s 已被会话 %s 占用", session.OpenID, existingSession.ID)
+		if existingValue, exists := m.sessionsByUID.Load(session.OpenID); exists {
+			existingSession := existingValue.(*Session)
+			if existingSession.ID != session.ID {
+				return fmt.Errorf("OpenID %s 已被会话 %s 占用", session.OpenID, existingSession.ID)
+			}
 		}
 		// 绑定到OpenID索引
-		m.sessionsByUID[session.OpenID] = session
+		m.sessionsByUID.Store(session.OpenID, session)
 	}
 
 	// 绑定到GID索引（如果有GID的话）
 	if gid := session.Gid(); gid != 0 {
 		// 检查GID是否已被占用
-		if existingSession, exists := m.sessionsByGID[gid]; exists && existingSession.ID != session.ID {
-			return fmt.Errorf("GID %d 已被会话 %s 占用", gid, existingSession.ID)
+		if existingValue, exists := m.sessionsByGID.Load(gid); exists {
+			existingSession := existingValue.(*Session)
+			if existingSession.ID != session.ID {
+				return fmt.Errorf("GID %d 已被会话 %s 占用", gid, existingSession.ID)
+			}
 		}
 		// 绑定到GID索引
-		m.sessionsByGID[gid] = session
+		m.sessionsByGID.Store(gid, session)
 	}
 
 	return nil
@@ -559,29 +580,25 @@ func (m *Manager) BindSession(session *Session) error {
 
 // UnbindSession 解绑会话（登出或断开时调用）
 func (m *Manager) UnbindSession(session *Session) {
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
-
 	// 从GID索引中移除
 	if gid := session.Gid(); gid != 0 {
-		delete(m.sessionsByGID, gid)
+		m.sessionsByGID.Delete(gid)
 	}
 
 	// 从OpenID索引中移除
 	if session.OpenID != "" {
-		delete(m.sessionsByUID, session.OpenID)
+		m.sessionsByUID.Delete(session.OpenID)
 	}
 }
 
 // RemoveSessionWithDelay 延迟移除会话（支持重连）
 func (m *Manager) RemoveSessionWithDelay(sessionID string, delay bool, reason string) {
-	m.sessionsMux.RLock()
-	session, exists := m.sessions[sessionID]
-	m.sessionsMux.RUnlock()
-
+	value, exists := m.sessions.Load(sessionID)
 	if !exists {
 		return
 	}
+
+	session := value.(*Session)
 
 	// 标记会话为关闭状态
 	alreadyClosed := session.SetClosed()
@@ -607,30 +624,31 @@ func (m *Manager) RemoveSessionWithDelay(sessionID string, delay bool, reason st
 
 // immediateRemoveSession 立即移除会话
 func (m *Manager) immediateRemoveSession(sessionID string) {
-	m.sessionsMux.Lock()
-	session, exists := m.sessions[sessionID]
-	if exists {
-		delete(m.sessions, sessionID)
-
-		// 从其他索引中移除
-		if gid := session.Gid(); gid != 0 {
-			delete(m.sessionsByGID, gid)
-		}
-		if session.OpenID != "" {
-			delete(m.sessionsByUID, session.OpenID)
-		}
+	value, exists := m.sessions.Load(sessionID)
+	if !exists {
+		return
 	}
-	m.sessionsMux.Unlock()
 
-	if exists {
-		// 触发同步回调
-		m.triggerSyncCallback(sessionID, session, "session_deleted")
-		
-		// 清理该会话的所有缓存消息（现在由OrderedMessageQueue处理）
-		// m.messageCache.RemoveSession(sessionID)
-		session.Close()
-		fmt.Printf("会话 %s 已被彻底清理\n", sessionID)
+	session := value.(*Session)
+
+	// 从所有索引中原子移除
+	m.sessions.Delete(sessionID)
+
+	// 从其他索引中移除
+	if gid := session.Gid(); gid != 0 {
+		m.sessionsByGID.Delete(gid)
 	}
+	if session.OpenID != "" {
+		m.sessionsByUID.Delete(session.OpenID)
+	}
+
+	// 触发同步回调
+	m.triggerSyncCallback(sessionID, session, "session_deleted")
+
+	// 清理该会话的所有缓存消息（现在由OrderedMessageQueue处理）
+	// m.messageCache.RemoveSession(sessionID)
+	session.Close()
+	fmt.Printf("会话 %s 已被彻底清理\n", sessionID)
 }
 
 // PushToSession 单播推送消息到指定会话
@@ -674,12 +692,10 @@ func (m *Manager) PushToOpenID(openID string, msgType string, data []byte) error
 
 // GetSessionsByGIDs 根据GID列表获取会话列表
 func (m *Manager) GetSessionsByGIDs(gids []int64) []*Session {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
 	sessions := make([]*Session, 0, len(gids))
 	for _, gid := range gids {
-		if session, exists := m.sessionsByGID[gid]; exists {
+		if value, exists := m.sessionsByGID.Load(gid); exists {
+			session := value.(*Session)
 			sessions = append(sessions, session)
 		}
 	}
@@ -688,15 +704,14 @@ func (m *Manager) GetSessionsByGIDs(gids []int64) []*Session {
 
 // GetOnlineUserCount 获取在线用户数量
 func (m *Manager) GetOnlineUserCount() int {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
-
 	count := 0
-	for _, session := range m.sessions {
+	m.sessions.Range(func(key, value interface{}) bool {
+		session := value.(*Session)
 		if session.IsNormal() && !session.IsClosed() {
 			count++
 		}
-	}
+		return true
+	})
 	return count
 }
 
@@ -704,7 +719,7 @@ func (m *Manager) GetOnlineUserCount() int {
 func (m *Manager) EnableSync(callback func(sessionID string, session *Session, event string)) {
 	m.syncCallbackMux.Lock()
 	defer m.syncCallbackMux.Unlock()
-	
+
 	m.syncEnabled = true
 	m.syncCallback = callback
 	fmt.Printf("会话管理器同步功能已启用\n")
@@ -714,7 +729,7 @@ func (m *Manager) EnableSync(callback func(sessionID string, session *Session, e
 func (m *Manager) DisableSync() {
 	m.syncCallbackMux.Lock()
 	defer m.syncCallbackMux.Unlock()
-	
+
 	m.syncEnabled = false
 	m.syncCallback = nil
 	fmt.Printf("会话管理器同步功能已禁用\n")
@@ -763,9 +778,6 @@ func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 	if !m.backupMode {
 		return fmt.Errorf("只有备份模式才能恢复会话")
 	}
-
-	m.sessionsMux.Lock()
-	defer m.sessionsMux.Unlock()
 
 	// 从同步数据创建会话对象
 	sessionID, ok := sessionData["session_id"].(string)
@@ -816,18 +828,18 @@ func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 		restoredSession.maxClientSeq = uint64(maxClientSeq)
 	}
 
-	// 注册到各个索引
-	m.sessions[sessionID] = restoredSession
+	// 原子注册到各个索引
+	m.sessions.Store(sessionID, restoredSession)
 	if restoredSession.OpenID != "" {
-		m.sessionsByUID[restoredSession.OpenID] = restoredSession
+		m.sessionsByUID.Store(restoredSession.OpenID, restoredSession)
 	}
 	if restoredSession.gid != 0 {
-		m.sessionsByGID[restoredSession.gid] = restoredSession
+		m.sessionsByGID.Store(restoredSession.gid, restoredSession)
 	}
 
-	fmt.Printf("恢复会话成功 - 会话: %s, OpenID: %s, GID: %d\n", 
+	fmt.Printf("恢复会话成功 - 会话: %s, OpenID: %s, GID: %d\n",
 		sessionID, restoredSession.OpenID, restoredSession.gid)
-	
+
 	return nil
 }
 
@@ -840,33 +852,53 @@ func (m *Manager) GetSessionSyncData(sessionID string) (map[string]interface{}, 
 
 	return map[string]interface{}{
 		"session_id":     session.ID,
-		"open_id":       session.OpenID,
-		"client_id":     session.ClientID,
-		"access_token":  session.AccessToken,
-		"user_ip":       session.UserIP,
-		"state":         session.State(),
-		"gid":           session.Gid(),
-		"zone":          session.Zone(),
-		"server_seq":    session.ServerSeq(),
+		"open_id":        session.OpenID,
+		"client_id":      session.ClientID,
+		"access_token":   session.AccessToken,
+		"user_ip":        session.UserIP,
+		"state":          session.State(),
+		"gid":            session.Gid(),
+		"zone":           session.Zone(),
+		"server_seq":     session.ServerSeq(),
 		"max_client_seq": session.MaxClientSeq(),
-		"create_time":   session.CreateTime,
-		"last_activity": session.LastActivity,
+		"create_time":    session.CreateTime,
+		"last_activity":  session.LastActivity,
 	}, nil
 }
 
 // ValidateSessionData 校验会话数据完整性
 func (m *Manager) ValidateSessionData() map[string]interface{} {
-	m.sessionsMux.RLock()
-	defer m.sessionsMux.RUnlock()
+	// 计算各种统计数据
+	totalSessions := 0
+	gidIndexed := 0
+	uidIndexed := 0
+
+	// 统计总会话数
+	m.sessions.Range(func(key, value interface{}) bool {
+		totalSessions++
+		return true
+	})
+
+	// 统计GID索引数
+	m.sessionsByGID.Range(func(key, value interface{}) bool {
+		gidIndexed++
+		return true
+	})
+
+	// 统计UID索引数
+	m.sessionsByUID.Range(func(key, value interface{}) bool {
+		uidIndexed++
+		return true
+	})
 
 	stats := map[string]interface{}{
-		"total_sessions":     len(m.sessions),
-		"gid_indexed":       len(m.sessionsByGID),
-		"uid_indexed":       len(m.sessionsByUID),
-		"valid_sessions":    0,
-		"invalid_sessions":  0,
-		"closed_sessions":   0,
-		"inconsistencies":   make([]string, 0),
+		"total_sessions":   totalSessions,
+		"gid_indexed":      gidIndexed,
+		"uid_indexed":      uidIndexed,
+		"valid_sessions":   0,
+		"invalid_sessions": 0,
+		"closed_sessions":  0,
+		"inconsistencies":  make([]string, 0),
 	}
 
 	validCount := 0
@@ -874,33 +906,42 @@ func (m *Manager) ValidateSessionData() map[string]interface{} {
 	closedCount := 0
 	inconsistencies := make([]string, 0)
 
-	for sessionID, session := range m.sessions {
+	// 遍历所有会话进行验证
+	m.sessions.Range(func(key, value interface{}) bool {
+		sessionID := key.(string)
+		session := value.(*Session)
+
 		if session == nil {
 			invalidCount++
 			inconsistencies = append(inconsistencies, fmt.Sprintf("空会话对象: %s", sessionID))
-			continue
+			return true
 		}
 
 		if session.IsClosed() {
 			closedCount++
-			continue
+			return true
 		}
 
 		validCount++
 
 		// 检查索引一致性
 		if session.OpenID != "" {
-			if indexedSession, exists := m.sessionsByUID[session.OpenID]; !exists || indexedSession.ID != sessionID {
+			if indexedValue, exists := m.sessionsByUID.Load(session.OpenID); !exists {
+				inconsistencies = append(inconsistencies, fmt.Sprintf("UID索引不一致: %s", sessionID))
+			} else if indexedSession := indexedValue.(*Session); indexedSession.ID != sessionID {
 				inconsistencies = append(inconsistencies, fmt.Sprintf("UID索引不一致: %s", sessionID))
 			}
 		}
 
 		if session.Gid() != 0 {
-			if indexedSession, exists := m.sessionsByGID[session.Gid()]; !exists || indexedSession.ID != sessionID {
+			if indexedValue, exists := m.sessionsByGID.Load(session.Gid()); !exists {
+				inconsistencies = append(inconsistencies, fmt.Sprintf("GID索引不一致: %s", sessionID))
+			} else if indexedSession := indexedValue.(*Session); indexedSession.ID != sessionID {
 				inconsistencies = append(inconsistencies, fmt.Sprintf("GID索引不一致: %s", sessionID))
 			}
 		}
-	}
+		return true
+	})
 
 	stats["valid_sessions"] = validCount
 	stats["invalid_sessions"] = invalidCount

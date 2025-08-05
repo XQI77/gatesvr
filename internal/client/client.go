@@ -260,10 +260,10 @@ func NewClient(config *Config) *Client {
 	}
 }
 
-// generateRandomOpenID 生成随机的5位数字OpenID (范围: 10000-10099)
+// generateRandomOpenID 生成随机的5位数字OpenID (范围: 10000-99999)
 func generateRandomOpenID() string {
-	// 生成10000-10099范围内的随机数
-	randomNum := 10000 + (time.Now().UnixNano() % 100)
+	// 生成10000-99999范围内的随机数
+	randomNum := 10000 + (time.Now().UnixNano() % 90000)
 	return fmt.Sprintf("%05d", randomNum)
 }
 
@@ -280,13 +280,13 @@ func isValidOpenID(openID string) bool {
 		}
 	}
 
-	// 检查是否在有效范围内 (10000-10099)
+	// 检查是否在有效范围内 (10000-99999)
 	var num int
 	if _, err := fmt.Sscanf(openID, "%d", &num); err != nil {
 		return false
 	}
 
-	return num >= 10000 && num <= 10099
+	return num >= 10000 && num <= 99999
 }
 
 // Connect 连接到服务器
@@ -410,10 +410,10 @@ func (c *Client) disconnect(force bool) error {
 func (c *Client) saveReconnectState() {
 	c.reconnectState.mutex.Lock()
 	defer c.reconnectState.mutex.Unlock()
-	
+
 	// 保存当前业务序列号
 	c.reconnectState.businessSeq = atomic.LoadUint64(&c.nextBusinessSeq)
-	log.Printf("保存重连状态 - 业务序列号: %d, 最后确认服务器序号: %d", 
+	log.Printf("保存重连状态 - 业务序列号: %d, 最后确认服务器序号: %d",
 		c.reconnectState.businessSeq, c.reconnectState.lastAckedSeqId)
 }
 
@@ -421,7 +421,7 @@ func (c *Client) saveReconnectState() {
 func (c *Client) clearReconnectState() {
 	c.reconnectState.mutex.Lock()
 	defer c.reconnectState.mutex.Unlock()
-	
+
 	c.reconnectState.lastAckedSeqId = 0
 	c.reconnectState.businessSeq = 0
 	log.Printf("已清理重连状态")
@@ -431,11 +431,11 @@ func (c *Client) clearReconnectState() {
 func (c *Client) restoreReconnectState() {
 	c.reconnectState.mutex.RLock()
 	defer c.reconnectState.mutex.RUnlock()
-	
+
 	if c.reconnectState.businessSeq > 0 {
 		// 恢复业务序列号
 		atomic.StoreUint64(&c.nextBusinessSeq, c.reconnectState.businessSeq)
-		log.Printf("恢复重连状态 - 业务序列号: %d, 最后确认服务器序号: %d", 
+		log.Printf("恢复重连状态 - 业务序列号: %d, 最后确认服务器序号: %d",
 			c.reconnectState.businessSeq, c.reconnectState.lastAckedSeqId)
 	}
 }
@@ -443,18 +443,18 @@ func (c *Client) restoreReconnectState() {
 // Reconnect 重新连接（保持序列号连续性）
 func (c *Client) Reconnect(ctx context.Context) error {
 	log.Printf("开始重新连接...")
-	
+
 	// 先断开现有连接（如果有）
 	if c.IsConnected() {
 		c.ForceDisconnect()
 	}
-	
+
 	// 重置停止信号
 	c.stopCh = make(chan struct{})
-	
+
 	// 恢复重连状态
 	c.restoreReconnectState()
-	
+
 	// 配置TLS
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.config.TLSSkipVerify,
@@ -500,7 +500,7 @@ func (c *Client) Reconnect(ctx context.Context) error {
 		return fmt.Errorf("发送start消息失败: %w", err)
 	}
 
-	log.Printf("重连成功: %s, OpenID: %s, 业务序列号: %d", 
+	log.Printf("重连成功: %s, OpenID: %s, 业务序列号: %d",
 		c.config.ServerAddr, c.config.OpenID, atomic.LoadUint64(&c.nextBusinessSeq))
 	return nil
 }
@@ -509,7 +509,7 @@ func (c *Client) Reconnect(ctx context.Context) error {
 func (c *Client) updateLastAckedSeqId(seqId uint64) {
 	c.reconnectState.mutex.Lock()
 	defer c.reconnectState.mutex.Unlock()
-	
+
 	if seqId > c.reconnectState.lastAckedSeqId {
 		c.reconnectState.lastAckedSeqId = seqId
 	}
@@ -522,7 +522,7 @@ func (c *Client) sendStartMessageWithLastAcked() error {
 	}
 
 	msgID := c.getNextMsgID()
-	
+
 	// 获取最后确认的序列号
 	c.reconnectState.mutex.RLock()
 	lastAckedSeqId := c.reconnectState.lastAckedSeqId
@@ -548,7 +548,7 @@ func (c *Client) sendStartMessageWithLastAcked() error {
 		return fmt.Errorf("发送start请求失败: %w", err)
 	}
 
-	log.Printf("已发送start消息(重连) - OpenID: %s, 消息ID: %d, lastAckedSeqId: %d", 
+	log.Printf("已发送start消息(重连) - OpenID: %s, 消息ID: %d, lastAckedSeqId: %d",
 		c.config.OpenID, msgID, lastAckedSeqId)
 
 	// 等待响应

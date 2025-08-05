@@ -132,7 +132,7 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 
 	// 现在使用提取到的身份信息创建或重连会话
 	session, isReconnect := s.sessionManager.CreateOrReconnectSession(conn, stream, clientID, openID, accessToken, userIP)
-
+	log.Printf("根据第一个消息提取出session - sessionid: %s", session.ID)
 	if isReconnect {
 		log.Printf("检测到重连 - 会话: %s, 客户端: %s, 用户: %s", session.ID, clientID, openID)
 	}

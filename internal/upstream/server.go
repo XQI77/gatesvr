@@ -265,8 +265,8 @@ func (s *Server) handleLogin(ctx context.Context, req *pb.UpstreamRequest) (*pb.
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"language":     "zh-CN",
-			"gid":          "123456", // 示例GID
-			"zone":         "1",      // 示例Zone
+			"gid":          req.Openid, // 使用OpenID作为GID
+			"zone":         "1",        // 示例Zone
 		},
 	}, nil
 }
@@ -304,10 +304,10 @@ func (s *Server) handleLogout(ctx context.Context, req *pb.UpstreamRequest) (*pb
 func (s *Server) handleUserList(ctx context.Context, req *pb.UpstreamRequest) (*pb.UpstreamResponse, error) {
 	s.usersMutex.RLock()
 	userCount := len(s.loggedInUsers)
-	
+
 	var userList []string
 	for openid, session := range s.loggedInUsers {
-		userInfo := fmt.Sprintf("OpenID: %s, 登录时间: %s", 
+		userInfo := fmt.Sprintf("OpenID: %s, 登录时间: %s",
 			openid, session.LoginTime.Format("2006-01-02 15:04:05"))
 		userList = append(userList, userInfo)
 	}
@@ -454,7 +454,7 @@ func (s *Server) handleBroadcastCommand(ctx context.Context, req *pb.UpstreamReq
 	userCount := s.sendBroadcastMessage(message, req.Data)
 
 	responseMsg := fmt.Sprintf("广播消息已发送给 %d 个在线用户", userCount)
-	
+
 	return &pb.UpstreamResponse{
 		Code:    200,
 		Message: "广播成功",
@@ -480,8 +480,8 @@ func (s *Server) handleBeforeCommand(ctx context.Context, req *pb.UpstreamReques
 			defer cancel()
 
 			notifyContent := fmt.Sprintf("【NOTIFY BEFORE】%s - 时间: %s", message, time.Now().Format("15:04:05.000"))
-			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "before_test", 
-				"Notify Before Response", notifyContent, []byte("notify_before_data"), 
+			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "before_test",
+				"Notify Before Response", notifyContent, []byte("notify_before_data"),
 				pb.NotifySyncHint_NSH_BEFORE_RESPONSE, req.ClientSeqId)
 			if err != nil {
 				log.Printf("Before notify推送失败: %v", err)
@@ -495,12 +495,12 @@ func (s *Server) handleBeforeCommand(ctx context.Context, req *pb.UpstreamReques
 	time.Sleep(100 * time.Millisecond)
 
 	responseMsg := fmt.Sprintf("【RESPONSE】%s - 处理完成时间: %s", message, time.Now().Format("15:04:05.000"))
-	
+
 	return &pb.UpstreamResponse{
-		Code:         200,
-		Message:      "before指令执行成功",
-		Data:         []byte(responseMsg),
-		ClientSeqId:  req.ClientSeqId,
+		Code:        200,
+		Message:     "before指令执行成功",
+		Data:        []byte(responseMsg),
+		ClientSeqId: req.ClientSeqId,
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"test-type":    "before",
@@ -520,13 +520,13 @@ func (s *Server) handleAfterCommand(ctx context.Context, req *pb.UpstreamRequest
 		go func() {
 			// 稍微延迟一下确保response先返回
 			time.Sleep(50 * time.Millisecond)
-			
+
 			pushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
 			notifyContent := fmt.Sprintf("【NOTIFY AFTER】%s - 时间: %s", message, time.Now().Format("15:04:05.000"))
-			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "after_test", 
-				"Notify After Response", notifyContent, []byte("notify_after_data"), 
+			err := s.unicastClient.PushToOpenIDWithSyncHint(pushCtx, req.Openid, "after_test",
+				"Notify After Response", notifyContent, []byte("notify_after_data"),
 				pb.NotifySyncHint_NSH_AFTER_RESPONSE, req.ClientSeqId)
 			if err != nil {
 				log.Printf("After notify推送失败: %v", err)
@@ -537,15 +537,15 @@ func (s *Server) handleAfterCommand(ctx context.Context, req *pb.UpstreamRequest
 	}
 
 	// 模拟处理延迟
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	responseMsg := fmt.Sprintf("【RESPONSE】%s - 处理完成时间: %s", message, time.Now().Format("15:04:05.000"))
-	
+
 	return &pb.UpstreamResponse{
-		Code:         200,
-		Message:      "after指令执行成功",
-		Data:         []byte(responseMsg),
-		ClientSeqId:  req.ClientSeqId,
+		Code:        200,
+		Message:     "after指令执行成功",
+		Data:        []byte(responseMsg),
+		ClientSeqId: req.ClientSeqId,
 		Headers: map[string]string{
 			"content-type": "text/plain",
 			"test-type":    "after",
@@ -655,15 +655,15 @@ func (s *Server) broadcastRoutine() {
 			// 只有在有在线用户时才广播
 			if userCount > 0 {
 				broadcastCount++
-				message := fmt.Sprintf("定时广播消息 #%d - 当前时间: %s, 在线用户: %d人", 
-					broadcastCount, 
+				message := fmt.Sprintf("定时广播消息 #%d - 当前时间: %s, 在线用户: %d人",
+					broadcastCount,
 					time.Now().Format("2006-01-02 15:04:05"),
 					userCount)
-				
+
 				data := []byte(message)
 				actualUserCount := s.sendBroadcastMessage(message, data)
-				
-				log.Printf("定时广播完成 #%d - 目标用户: %d, 实际发送: %d", 
+
+				log.Printf("定时广播完成 #%d - 目标用户: %d, 实际发送: %d",
 					broadcastCount, userCount, actualUserCount)
 			}
 		}
@@ -718,16 +718,16 @@ func (s *Server) GetBroadcastStats() map[string]interface{} {
 	userCount := len(s.loggedInUsers)
 	var userList []string
 	for openid, session := range s.loggedInUsers {
-		userList = append(userList, fmt.Sprintf("%s(登录时间:%s)", 
+		userList = append(userList, fmt.Sprintf("%s(登录时间:%s)",
 			openid, session.LoginTime.Format("15:04:05")))
 	}
 	s.usersMutex.RUnlock()
 
 	return map[string]interface{}{
-		"status":      "active",
+		"status":       "active",
 		"online_users": userCount,
-		"user_list":   userList,
-		"uptime":      time.Since(s.startTime).String(),
+		"user_list":    userList,
+		"uptime":       time.Since(s.startTime).String(),
 	}
 }
 

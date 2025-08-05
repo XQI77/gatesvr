@@ -31,17 +31,17 @@ type BackupManagerImpl struct {
 
 // BackupManagerStats 备份管理器统计
 type BackupManagerStats struct {
-	StartTime         time.Time     `json:"start_time"`
-	CurrentMode       ServerMode    `json:"current_mode"`
-	SyncEnabled       bool          `json:"sync_enabled"`
-	HeartbeatEnabled  bool          `json:"heartbeat_enabled"`
-	FailoverEnabled   bool          `json:"failover_enabled"`
-	SessionCount      int           `json:"session_count"`
-	SyncStats         *SyncStats    `json:"sync_stats"`
-	HeartbeatStats    interface{}   `json:"heartbeat_stats"`
-	FailoverStats     interface{}   `json:"failover_stats"`
-	LastUpdateTime    time.Time     `json:"last_update_time"`
-	IsHealthy         bool          `json:"is_healthy"`
+	StartTime        time.Time   `json:"start_time"`
+	CurrentMode      ServerMode  `json:"current_mode"`
+	SyncEnabled      bool        `json:"sync_enabled"`
+	HeartbeatEnabled bool        `json:"heartbeat_enabled"`
+	FailoverEnabled  bool        `json:"failover_enabled"`
+	SessionCount     int         `json:"session_count"`
+	SyncStats        *SyncStats  `json:"sync_stats"`
+	HeartbeatStats   interface{} `json:"heartbeat_stats"`
+	FailoverStats    interface{} `json:"failover_stats"`
+	LastUpdateTime   time.Time   `json:"last_update_time"`
+	IsHealthy        bool        `json:"is_healthy"`
 }
 
 // NewBackupManager 创建备份管理器
@@ -178,13 +178,13 @@ func (bm *BackupManagerImpl) GetStats() map[string]interface{} {
 	defer bm.statsMux.RUnlock()
 
 	stats := map[string]interface{}{
-		"server_id":         bm.serverID,
-		"current_mode":      bm.getModeString(),
-		"sync_enabled":      bm.config.Sync.Enabled,
-		"start_time":        bm.stats.StartTime,
-		"session_count":     bm.stats.SessionCount,
-		"last_update_time":  bm.stats.LastUpdateTime,
-		"is_healthy":        bm.stats.IsHealthy,
+		"server_id":        bm.serverID,
+		"current_mode":     bm.getModeString(),
+		"sync_enabled":     bm.config.Sync.Enabled,
+		"start_time":       bm.stats.StartTime,
+		"session_count":    bm.stats.SessionCount,
+		"last_update_time": bm.stats.LastUpdateTime,
+		"is_healthy":       bm.stats.IsHealthy,
 	}
 
 	// 添加各服务统计
@@ -283,7 +283,7 @@ func (bm *BackupManagerImpl) startHeartbeatService() error {
 		// 向后兼容，使用旧配置
 		bm.heartbeatService = NewHeartbeatService(&bm.config.Sync, bm.currentMode, bm.serverID, bm.sessionMgr)
 	}
-	
+
 	if err := bm.heartbeatService.Start(bm.ctx); err != nil {
 		return fmt.Errorf("启动心跳服务失败: %w", err)
 	}
@@ -356,7 +356,7 @@ func (bm *BackupManagerImpl) syncAllSessions() {
 	for _, sess := range sessions {
 		if sess != nil && !sess.IsClosed() {
 			if err := bm.syncService.SyncSession(sess.ID, sess); err != nil {
-				log.Printf("同步会话失败: %s, 错误: %v", sess.ID, err)
+				//log.Printf("同步会话失败: %s, 错误: %v", sess.ID, err)
 			} else {
 				syncCount++
 			}

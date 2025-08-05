@@ -259,13 +259,58 @@ func (s *Server) sendErrorResponse(sess *session.Session, msgID uint32, code int
 	}
 }
 
-// handleStart 处理连接建立请求
+// handleStart 处理连接建立请求 - 异步版本
 func (s *Server) handleStart(sess *session.Session, req *pb.ClientRequest) bool {
-	log.Printf("处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
+	log.Printf("异步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 	startTime := time.Now()
 	defer func() {
 		s.performanceTracker.RecordTotalLatency(time.Since(startTime))
 	}()
+
+	// 如果异步处理器不可用，回退到同步处理
+	if s.startProcessor == nil {
+		log.Printf("START异步处理器未初始化，使用同步处理 - 会话: %s", sess.ID)
+		return s.handleStartSync(sess, req)
+	}
+
+	// 使用异步处理器处理START消息
+	result, err := s.startProcessor.ProcessStartMessage(sess, req)
+	if err != nil {
+		log.Printf("START消息异步处理失败: %v", err)
+		s.sendErrorResponse(sess, req.MsgId, 500, "处理失败", err.Error())
+		return false
+	}
+
+	// 处理结果
+	if !result.Success {
+		log.Printf("START消息处理失败 - 会话: %s, 错误: %v", sess.ID, result.Error)
+
+		// 发送错误响应
+		if result.Response != nil && result.Response.Error != nil {
+			s.sendErrorResponse(sess, req.MsgId, result.Response.Error.ErrorCode,
+				result.Response.Error.ErrorMessage, result.Response.Error.Detail)
+		} else {
+			s.sendErrorResponse(sess, req.MsgId, 500, "处理失败", result.Error.Error())
+		}
+		return false
+	}
+
+	// 成功处理，发送响应
+	if err := s.orderedSender.SendStartResponse(sess, req.MsgId,
+		result.Response.Success, nil,
+		result.Response.HeartbeatInterval, result.Response.ConnectionId); err != nil {
+		log.Printf("发送连接建立响应失败: %v", err)
+		return false
+	}
+
+	log.Printf("START消息异步处理成功 - 会话: %s, 处理时间: %.2fms",
+		sess.ID, result.ProcessTime.Seconds()*1000)
+	return true
+}
+
+// handleStartSync 同步处理START消息（备用方案）
+func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) bool {
+	log.Printf("同步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 
 	// START消息不验证序列号（序列号应为0）
 	if req.SeqId != 0 {
@@ -331,7 +376,7 @@ func (s *Server) handleStart(sess *session.Session, req *pb.ClientRequest) bool 
 		return false
 	}
 
-	log.Printf("处理连接建立请求 - OpenID: %s, 客户端: %s, 会话: %s, 状态: %d",
+	log.Printf("同步处理连接建立请求成功 - OpenID: %s, 客户端: %s, 会话: %s, 状态: %d",
 		startReq.Openid, sess.ClientID, sess.ID, sess.State())
 
 	return true

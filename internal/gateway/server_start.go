@@ -50,6 +50,9 @@ func (s *Server) startHTTPServer() error {
 	mux.HandleFunc("/latency/detailed", s.handleDetailedLatency)
 	mux.HandleFunc("/latency/breakdown", s.handleLatencyBreakdown)
 	mux.HandleFunc("/latency/client", s.handleClientLatency)
+	
+	// START消息处理器监控API
+	mux.HandleFunc("/start-processor", s.handleStartProcessor)
 
 	// 注意：单播推送现在通过gRPC接口提供，HTTP API已移除
 
