@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -309,26 +310,132 @@ func printStartupInfo(config *gateway.Config) {
 	fmt.Println()
 }
 
-// setupLogToFile 设置日志输出到文件
+// setupLogToFile 设置日志输出到文件，支持3MB大小限制和轮转
 func setupLogToFile() {
 	// 日志文件路径
 	logFile := "gatesvr.log"
-	
-	// 创建或覆盖日志文件
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
-	if err != nil {
+
+	// 创建轮转日志写入器
+	writer := &rotatingWriter{
+		filename:  logFile,
+		maxSize:   3 * 1024 * 1024, // 3MB
+		maxBackup: 5,               // 保留5个备份文件
+	}
+
+	// 打开当前日志文件
+	if err := writer.openCurrent(); err != nil {
 		fmt.Printf("无法创建日志文件 %s: %v\n", logFile, err)
 		os.Exit(1)
 	}
-	
-	// 设置日志输出到文件
-	log.SetOutput(file)
-	
+
+	// 设置日志输出到轮转写入器
+	log.SetOutput(writer)
+
 	// 设置日志格式：时间 + 文件:行号 + 消息
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	
+
 	// 输出到控制台告知日志文件位置
-	fmt.Printf("日志已配置输出到文件: %s\n", logFile)
+	fmt.Printf("日志已配置输出到文件: %s (最大3MB)\n", logFile)
+}
+
+// rotatingWriter 实现日志轮转的写入器
+type rotatingWriter struct {
+	filename    string
+	maxSize     int64
+	maxBackup   int
+	file        *os.File
+	currentSize int64
+}
+
+// openCurrent 打开当前日志文件
+func (w *rotatingWriter) openCurrent() error {
+	// 检查现有文件大小
+	if info, err := os.Stat(w.filename); err == nil {
+		w.currentSize = info.Size()
+		// 如果现有文件太大，立即轮转
+		if w.currentSize >= w.maxSize {
+			if err := w.rotate(); err != nil {
+				return err
+			}
+			w.currentSize = 0
+		}
+	}
+
+	// 打开或创建文件
+	file, err := os.OpenFile(w.filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+
+	w.file = file
+	return nil
+}
+
+// Write 实现io.Writer接口
+func (w *rotatingWriter) Write(p []byte) (n int, err error) {
+	// 检查是否需要轮转
+	if w.currentSize+int64(len(p)) > w.maxSize {
+		if err := w.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	// 写入数据
+	n, err = w.file.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	w.currentSize += int64(n)
+	return n, nil
+}
+
+// rotate 执行日志轮转
+func (w *rotatingWriter) rotate() error {
+	// 关闭当前文件
+	if w.file != nil {
+		w.file.Close()
+	}
+
+	// 移动备份文件
+	for i := w.maxBackup - 1; i >= 1; i-- {
+		oldName := w.filename + "." + strconv.Itoa(i)
+		newName := w.filename + "." + strconv.Itoa(i+1)
+
+		if _, err := os.Stat(oldName); err == nil {
+			// 如果是最后一个备份文件，删除它
+			if i == w.maxBackup-1 {
+				os.Remove(newName)
+			}
+			os.Rename(oldName, newName)
+		}
+	}
+
+	// 移动当前文件为第一个备份
+	if _, err := os.Stat(w.filename); err == nil {
+		backupName := w.filename + ".1"
+		if err := os.Rename(w.filename, backupName); err != nil {
+			return err
+		}
+	}
+
+	// 创建新的日志文件
+	file, err := os.OpenFile(w.filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+
+	w.file = file
+	w.currentSize = 0
+	return nil
+}
+
+// Close 关闭日志文件
+func (w *rotatingWriter) Close() error {
+	if w.file != nil {
+		return w.file.Close()
+	}
+	return nil
 }
 
 // getBuildTime 获取构建时间
