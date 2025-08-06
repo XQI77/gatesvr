@@ -39,8 +39,8 @@ type Config struct {
 
 // StartProcessorConfig START消息处理器配置
 type StartProcessorConfig struct {
-	Enabled     bool          // 是否启用异步处理（默认true）
-	MaxWorkers  int           // 最大工作线程数（默认100）
-	QueueSize   int           // 任务队列大小（默认1000）
-	Timeout     time.Duration // 处理超时时间（默认30秒）
+	Enabled    bool          // 是否启用异步处理（默认true）
+	MaxWorkers int           // 最大工作线程数（默认100）
+	QueueSize  int           // 任务队列大小（默认1000）
+	Timeout    time.Duration // 处理超时时间（默认30秒）
 }

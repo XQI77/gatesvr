@@ -9,7 +9,7 @@
             "program": "${workspaceFolder}/cmd/gatesvr",
             "args": [
                 "-config",
-                "config.yaml"
+                "test-config.yaml"
             ],
             "cwd": "${workspaceFolder}",
             "env": {},

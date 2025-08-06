@@ -13,6 +13,7 @@ import (
 // Config 应用程序配置
 type Config struct {
 	Server            ServerConfig            `yaml:"server"`
+	StartProcessor    StartProcessorConfig    `yaml:"start_processor"`
 	Backup            BackupConfig            `yaml:"backup"`
 	OverloadProtection OverloadProtectionConfig `yaml:"overload_protection"`
 }
@@ -30,6 +31,14 @@ type ServerConfig struct {
 	SessionTimeout string                    `yaml:"session_timeout"`
 	AckTimeout     string                    `yaml:"ack_timeout"`
 	MaxRetries     int                       `yaml:"max_retries"`
+}
+
+// StartProcessorConfig START消息处理器配置
+type StartProcessorConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	MaxWorkers int    `yaml:"max_workers"`
+	QueueSize  int    `yaml:"queue_size"`
+	Timeout    string `yaml:"timeout"`
 }
 
 // HeartbeatConfig 心跳配置
@@ -117,6 +126,31 @@ func (c *Config) ToGatewayConfig() (*GatewayConfig, error) {
 		AckTimeout:       ackTimeout,
 		MaxRetries:       c.Server.MaxRetries,
 		ServerID:         c.Backup.ServerID,
+	}
+
+	// 处理 StartProcessor 配置
+	if c.StartProcessor.Enabled || c.StartProcessor.MaxWorkers > 0 {
+		timeout := 30 * time.Second // 默认值
+		if c.StartProcessor.Timeout != "" {
+			if parsed, err := c.ParseDuration(c.StartProcessor.Timeout); err == nil {
+				timeout = parsed
+			}
+		}
+
+		config.StartProcessor = &StartProcessorGatewayConfig{
+			Enabled:    c.StartProcessor.Enabled,
+			MaxWorkers: c.StartProcessor.MaxWorkers,
+			QueueSize:  c.StartProcessor.QueueSize,
+			Timeout:    timeout,
+		}
+
+		// 设置默认值
+		if config.StartProcessor.MaxWorkers == 0 {
+			config.StartProcessor.MaxWorkers = 100
+		}
+		if config.StartProcessor.QueueSize == 0 {
+			config.StartProcessor.QueueSize = 1000
+		}
 	}
 
 	// 处理备份配置
@@ -247,9 +281,18 @@ type GatewayConfig struct {
 	SessionTimeout      time.Duration
 	AckTimeout          time.Duration
 	MaxRetries          int
+	StartProcessor      *StartProcessorGatewayConfig
 	BackupConfig        *backup.BackupConfig
 	ServerID            string
 	OverloadProtection  *OverloadProtectionGatewayConfig
+}
+
+// StartProcessorGatewayConfig START处理器网关配置
+type StartProcessorGatewayConfig struct {
+	Enabled    bool
+	MaxWorkers int
+	QueueSize  int
+	Timeout    time.Duration
 }
 
 // OverloadProtectionGatewayConfig 网关过载保护配置

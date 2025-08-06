@@ -223,6 +223,17 @@ func main() {
 		log.Fatalf("证书文件验证失败: %v", err)
 	}
 
+	// 转换StartProcessor配置
+	var startProcessorConfig *gateway.StartProcessorConfig
+	if gatewayConfig.StartProcessor != nil {
+		startProcessorConfig = &gateway.StartProcessorConfig{
+			Enabled:    gatewayConfig.StartProcessor.Enabled,
+			MaxWorkers: gatewayConfig.StartProcessor.MaxWorkers,
+			QueueSize:  gatewayConfig.StartProcessor.QueueSize,
+			Timeout:    gatewayConfig.StartProcessor.Timeout,
+		}
+	}
+
 	// 转换过载保护配置
 	var overloadConfig *gateway.OverloadConfig
 	if gatewayConfig.OverloadProtection != nil {
@@ -252,6 +263,7 @@ func main() {
 		SessionTimeout:           gatewayConfig.SessionTimeout,
 		AckTimeout:               gatewayConfig.AckTimeout,
 		MaxRetries:               gatewayConfig.MaxRetries,
+		StartProcessorConfig:     startProcessorConfig,
 		BackupConfig:             gatewayConfig.BackupConfig,
 		ServerID:                 gatewayConfig.ServerID,
 		OverloadProtectionConfig: overloadConfig,

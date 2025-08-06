@@ -304,17 +304,19 @@ func (s *Server) sendErrorResponse(sess *session.Session, msgID uint32, code int
 
 // handleStart 处理连接建立请求 - 异步版本
 func (s *Server) handleStart(sess *session.Session, req *pb.ClientRequest) bool {
-	log.Printf("异步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 	startTime := time.Now()
 	defer func() {
 		s.performanceTracker.RecordTotalLatency(time.Since(startTime))
 	}()
 
-	// 如果异步处理器不可用，回退到同步处理
-	if s.startProcessor == nil {
-		log.Printf("START异步处理器未初始化，使用同步处理 - 会话: %s", sess.ID)
+	// 根据配置选择处理方式
+	config := s.config.StartProcessorConfig
+	if config == nil || !config.Enabled || s.startProcessor == nil {
+		log.Printf("同步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 		return s.handleStartSync(sess, req)
 	}
+
+	log.Printf("异步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 
 	// 使用异步处理器处理START消息
 	result, err := s.startProcessor.ProcessStartMessage(sess, req)

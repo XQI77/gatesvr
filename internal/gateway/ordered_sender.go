@@ -107,7 +107,7 @@ func (oms *OrderedMessageSender) sendMessageDirectly(sess *session.Session, orde
 	// 更新指标 - 记录指标更新时延
 	metricsUpdateStart := time.Now()
 	oms.server.metrics.AddThroughput("outbound", int64(len(orderedMsg.Data)))
-	oms.server.metrics.SetOutboundQueueSize(sess.ID, oms.server.sessionManager.GetPendingCount(sess.ID))
+	//oms.server.metrics.SetOutboundQueueSize(sess.ID, oms.server.sessionManager.GetPendingCount(sess.ID))
 	oms.server.performanceTracker.RecordBytes(int64(len(orderedMsg.Data)))
 	metricsUpdateLatency := time.Since(metricsUpdateStart)
 	oms.server.performanceTracker.RecordMetricsUpdateLatency(metricsUpdateLatency)
