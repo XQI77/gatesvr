@@ -25,9 +25,12 @@ type Stats struct {
 	AvgLatencyMs      float64 `json:"avg_latency_ms"`
 	MinLatencyMs      float64 `json:"min_latency_ms"`
 	MaxLatencyMs      float64 `json:"max_latency_ms"`
-	P95LatencyMs      float64 `json:"p95_latency_ms"`
-	P99LatencyMs      float64 `json:"p99_latency_ms"`
 	LatencySamples    int     `json:"latency_samples"`
+
+	// 系统资源监控
+	CpuUsagePercent    float64 `json:"cpu_usage_percent"`
+	MemoryUsagePercent float64 `json:"memory_usage_percent"`
+	MemoryUsageMB      int64   `json:"memory_usage_mb"`
 
 	// 新增详细时延统计
 	DetailedLatency map[string]interface{} `json:"detailed_latency"`
@@ -288,12 +291,15 @@ func printDetailedStats(stats *Stats) {
 		fmt.Printf("平均延迟:         %.2f ms\n", stats.AvgLatencyMs)
 		fmt.Printf("最小延迟:         %.2f ms\n", stats.MinLatencyMs)
 		fmt.Printf("最大延迟:         %.2f ms\n", stats.MaxLatencyMs)
-		fmt.Printf("P95延迟:          %.2f ms\n", stats.P95LatencyMs)
-		fmt.Printf("P99延迟:          %.2f ms\n", stats.P99LatencyMs)
 		fmt.Printf("延迟样本数:       %d\n", stats.LatencySamples)
 	} else {
 		fmt.Printf("延迟统计:         暂无数据\n")
 	}
+
+	// 系统资源统计
+	fmt.Printf("CPU使用率:        %.1f%%\n", stats.CpuUsagePercent)
+	fmt.Printf("内存使用率:       %.1f%%\n", stats.MemoryUsagePercent)
+	fmt.Printf("内存使用量:       %d MB\n", stats.MemoryUsageMB)
 
 	// 显示详细时延统计 - 新增
 	if stats.DetailedLatency != nil {
@@ -325,9 +331,8 @@ func printSimpleDetailedLatency(detailedLatency map[string]interface{}) {
 		if stageData, ok := detailedLatency[stage.key].(map[string]interface{}); ok {
 			if count, ok := stageData["count"].(float64); ok && count > 0 {
 				avgLatency := stageData["avg_latency_ms"].(float64)
-				p95Latency := stageData["p95_latency_ms"].(float64)
-				fmt.Printf("%-18s 平均: %.2fms, P95: %.2fms, 次数: %.0f\n",
-					stage.name, avgLatency, p95Latency, count)
+				fmt.Printf("%-18s 平均: %.2fms, 次数: %.0f\n",
+					stage.name, avgLatency, count)
 			}
 		}
 	}
@@ -358,8 +363,6 @@ func printDetailedLatencyStats(latency *DetailedLatencyResponse) {
 			fmt.Printf("  平均时延:       %.2f ms\n", stageStats.AvgLatencyMs)
 			fmt.Printf("  最小时延:       %.2f ms\n", stageStats.MinLatencyMs)
 			fmt.Printf("  最大时延:       %.2f ms\n", stageStats.MaxLatencyMs)
-			fmt.Printf("  P95时延:        %.2f ms\n", stageStats.P95LatencyMs)
-			fmt.Printf("  P99时延:        %.2f ms\n", stageStats.P99LatencyMs)
 		}
 	}
 
@@ -398,9 +401,8 @@ func printLatencyBreakdownStats(breakdown map[string]interface{}) {
 						if stageData, ok := value.(map[string]interface{}); ok {
 							if count, ok := stageData["count"].(float64); ok && count > 0 {
 								avgLatency := stageData["avg_latency_ms"].(float64)
-								p95Latency := stageData["p95_latency_ms"].(float64)
-								fmt.Printf("    %-15s 平均: %.2fms, P95: %.2fms, 次数: %.0f\n",
-									key, avgLatency, p95Latency, count)
+								fmt.Printf("    %-15s 平均: %.2fms, 次数: %.0f\n",
+									key, avgLatency, count)
 							}
 						}
 					}
@@ -414,25 +416,26 @@ func printLatencyBreakdownStats(breakdown map[string]interface{}) {
 }
 
 func printTableHeader() {
-	fmt.Printf("%-19s %8s %8s %8s %10s %8s %8s %8s %8s %8s\n",
-		"时间", "活跃连接", "总请求", "QPS", "成功率%", "平均延迟", "P95延迟", "P99延迟", "吞吐量", "错误数")
-	fmt.Println("------------------------------------------------------------------------------------------------------------------------------------")
+	fmt.Printf("%-19s %8s %8s %8s %10s %8s %8s %8s %8s %8s %8s\n",
+		"时间", "活跃连接", "总请求", "QPS", "成功率%", "平均延迟", "吞吐量", "错误数", "CPU%", "内存%", "内存MB")
+	fmt.Println("----------------------------------------------------------------------------------------------------------------------------------------")
 }
 
 func printTableRow(stats *Stats) {
 	now := time.Now().Format("15:04:05")
 
-	fmt.Printf("%-19s %8d %8d %8.1f %9.1f%% %7.1fms %7.1fms %7.1fms %6.1fMB/s %8d\n",
+	fmt.Printf("%-19s %8d %8d %8.1f %9.1f%% %7.1fms %6.1fMB/s %8d %6.1f %6.1f %7d\n",
 		now,
 		stats.ActiveConnections,
 		stats.TotalRequests,
 		stats.QPS,
 		stats.SuccessRate,
 		stats.AvgLatencyMs,
-		stats.P95LatencyMs,
-		stats.P99LatencyMs,
 		stats.ThroughputMbps,
-		stats.TotalErrors)
+		stats.TotalErrors,
+		stats.CpuUsagePercent,
+		stats.MemoryUsagePercent,
+		stats.MemoryUsageMB)
 }
 
 func formatBytes(bytes int64) string {

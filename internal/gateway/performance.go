@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,31 +28,31 @@ type PerformanceTracker struct {
 // DetailedLatencyTracker 详细时延跟踪器
 type DetailedLatencyTracker struct {
 	// 各阶段时延统计
-	parseLatency      *StageLatencyStats // 消息解析时延
-	upstreamLatency   *StageLatencyStats // 上游调用时延
-	encodeLatency     *StageLatencyStats // 响应编码时延
-	sendLatency       *StageLatencyStats // 消息发送时延
-	totalLatency      *StageLatencyStats // 总处理时延
-	readLatency       *StageLatencyStats // 消息读取时延（新增）
-	processLatency    *StageLatencyStats // 消息处理时延（纯处理，不含读取等待）
-	
+	parseLatency    *StageLatencyStats // 消息解析时延
+	upstreamLatency *StageLatencyStats // 上游调用时延
+	encodeLatency   *StageLatencyStats // 响应编码时延
+	sendLatency     *StageLatencyStats // 消息发送时延
+	totalLatency    *StageLatencyStats // 总处理时延
+	readLatency     *StageLatencyStats // 消息读取时延（新增）
+	processLatency  *StageLatencyStats // 消息处理时延（纯处理，不含读取等待）
+
 	// handleBusinessRequest详细阶段时延统计
-	seqValidateLatency    *StageLatencyStats // 序列号验证时延
-	stateValidateLatency  *StageLatencyStats // 状态验证时延
-	buildReqLatency       *StageLatencyStats // 构造请求时延
-	loginProcessLatency   *StageLatencyStats // 登录处理时延
-	sendRespLatency       *StageLatencyStats // 发送响应时延
-	processNotifyLatency  *StageLatencyStats // 处理notify时延
-	
+	seqValidateLatency   *StageLatencyStats // 序列号验证时延
+	stateValidateLatency *StageLatencyStats // 状态验证时延
+	buildReqLatency      *StageLatencyStats // 构造请求时延
+	loginProcessLatency  *StageLatencyStats // 登录处理时延
+	sendRespLatency      *StageLatencyStats // 发送响应时延
+	processNotifyLatency *StageLatencyStats // 处理notify时延
+
 	// SendOrderedMessage详细阶段时延统计
-	seqAllocLatency       *StageLatencyStats // 序列号分配时延
-	msgEncodeLatency      *StageLatencyStats // 消息编码时延  
-	queueGetLatency       *StageLatencyStats // 获取队列时延
-	callbackSetLatency    *StageLatencyStats // 设置回调函数时延
-	enqueueLatency        *StageLatencyStats // 消息入队时延
-	directSendLatency     *StageLatencyStats // 直接发送时延
-	writeMessageLatency   *StageLatencyStats // 写消息时延
-	metricsUpdateLatency  *StageLatencyStats // 指标更新时延
+	seqAllocLatency      *StageLatencyStats // 序列号分配时延
+	msgEncodeLatency     *StageLatencyStats // 消息编码时延
+	queueGetLatency      *StageLatencyStats // 获取队列时延
+	callbackSetLatency   *StageLatencyStats // 设置回调函数时延
+	enqueueLatency       *StageLatencyStats // 消息入队时延
+	directSendLatency    *StageLatencyStats // 直接发送时延
+	writeMessageLatency  *StageLatencyStats // 写消息时延
+	metricsUpdateLatency *StageLatencyStats // 指标更新时延
 }
 
 // StageLatencyStats 阶段时延统计
@@ -114,8 +115,6 @@ func (s *StageLatencyStats) GetStats() map[string]interface{} {
 			"avg_latency_ms": 0.0,
 			"min_latency_ms": 0.0,
 			"max_latency_ms": 0.0,
-			"p95_latency_ms": 0.0,
-			"p99_latency_ms": 0.0,
 		}
 	}
 
@@ -127,42 +126,11 @@ func (s *StageLatencyStats) GetStats() map[string]interface{} {
 	minLatencyMs := float64(minLatNs) / 1e6
 	maxLatencyMs := float64(maxLatNs) / 1e6
 
-	var p95LatencyMs, p99LatencyMs float64
-
-	s.samplesMutex.RLock()
-	if len(s.recentSamples) >= 20 {
-		// 创建副本并排序
-		samples := make([]time.Duration, len(s.recentSamples))
-		copy(samples, s.recentSamples)
-
-		// 排序
-		for i := 0; i < len(samples)-1; i++ {
-			for j := i + 1; j < len(samples); j++ {
-				if samples[i] > samples[j] {
-					samples[i], samples[j] = samples[j], samples[i]
-				}
-			}
-		}
-
-		p95Index := int(float64(len(samples)) * 0.95)
-		p99Index := int(float64(len(samples)) * 0.99)
-
-		if p95Index < len(samples) {
-			p95LatencyMs = float64(samples[p95Index].Nanoseconds()) / 1e6
-		}
-		if p99Index < len(samples) {
-			p99LatencyMs = float64(samples[p99Index].Nanoseconds()) / 1e6
-		}
-	}
-	s.samplesMutex.RUnlock()
-
 	return map[string]interface{}{
 		"count":          totalCount,
 		"avg_latency_ms": avgLatencyMs,
 		"min_latency_ms": minLatencyMs,
 		"max_latency_ms": maxLatencyMs,
-		"p95_latency_ms": p95LatencyMs,
-		"p99_latency_ms": p99LatencyMs,
 	}
 }
 
@@ -176,24 +144,24 @@ func NewDetailedLatencyTracker() *DetailedLatencyTracker {
 		totalLatency:    NewStageLatencyStats(),
 		readLatency:     NewStageLatencyStats(), // 新增
 		processLatency:  NewStageLatencyStats(), // 新增
-		
+
 		// handleBusinessRequest详细阶段
-		seqValidateLatency:    NewStageLatencyStats(),
-		stateValidateLatency:  NewStageLatencyStats(),
-		buildReqLatency:       NewStageLatencyStats(),
-		loginProcessLatency:   NewStageLatencyStats(),
-		sendRespLatency:       NewStageLatencyStats(),
-		processNotifyLatency:  NewStageLatencyStats(),
-		
+		seqValidateLatency:   NewStageLatencyStats(),
+		stateValidateLatency: NewStageLatencyStats(),
+		buildReqLatency:      NewStageLatencyStats(),
+		loginProcessLatency:  NewStageLatencyStats(),
+		sendRespLatency:      NewStageLatencyStats(),
+		processNotifyLatency: NewStageLatencyStats(),
+
 		// SendOrderedMessage详细阶段
-		seqAllocLatency:       NewStageLatencyStats(),
-		msgEncodeLatency:      NewStageLatencyStats(),
-		queueGetLatency:       NewStageLatencyStats(),
-		callbackSetLatency:    NewStageLatencyStats(),
-		enqueueLatency:        NewStageLatencyStats(),
-		directSendLatency:     NewStageLatencyStats(),
-		writeMessageLatency:   NewStageLatencyStats(),
-		metricsUpdateLatency:  NewStageLatencyStats(),
+		seqAllocLatency:      NewStageLatencyStats(),
+		msgEncodeLatency:     NewStageLatencyStats(),
+		queueGetLatency:      NewStageLatencyStats(),
+		callbackSetLatency:   NewStageLatencyStats(),
+		enqueueLatency:       NewStageLatencyStats(),
+		directSendLatency:    NewStageLatencyStats(),
+		writeMessageLatency:  NewStageLatencyStats(),
+		metricsUpdateLatency: NewStageLatencyStats(),
 	}
 }
 
@@ -300,7 +268,7 @@ func (dt *DetailedLatencyTracker) GetDetailedStats() map[string]interface{} {
 		"total_latency":    dt.totalLatency.GetStats(),
 		"read_latency":     dt.readLatency.GetStats(),    // 新增
 		"process_latency":  dt.processLatency.GetStats(), // 新增
-		
+
 		// handleBusinessRequest详细阶段统计
 		"seq_validate_latency":   dt.seqValidateLatency.GetStats(),
 		"state_validate_latency": dt.stateValidateLatency.GetStats(),
@@ -308,16 +276,16 @@ func (dt *DetailedLatencyTracker) GetDetailedStats() map[string]interface{} {
 		"login_process_latency":  dt.loginProcessLatency.GetStats(),
 		"send_resp_latency":      dt.sendRespLatency.GetStats(),
 		"process_notify_latency": dt.processNotifyLatency.GetStats(),
-		
+
 		// SendOrderedMessage详细阶段统计
-		"seq_alloc_latency":       dt.seqAllocLatency.GetStats(),
-		"msg_encode_latency":      dt.msgEncodeLatency.GetStats(),
-		"queue_get_latency":       dt.queueGetLatency.GetStats(),
-		"callback_set_latency":    dt.callbackSetLatency.GetStats(),
-		"enqueue_latency":         dt.enqueueLatency.GetStats(),
-		"direct_send_latency":     dt.directSendLatency.GetStats(),
-		"write_message_latency":   dt.writeMessageLatency.GetStats(),
-		"metrics_update_latency":  dt.metricsUpdateLatency.GetStats(),
+		"seq_alloc_latency":      dt.seqAllocLatency.GetStats(),
+		"msg_encode_latency":     dt.msgEncodeLatency.GetStats(),
+		"queue_get_latency":      dt.queueGetLatency.GetStats(),
+		"callback_set_latency":   dt.callbackSetLatency.GetStats(),
+		"enqueue_latency":        dt.enqueueLatency.GetStats(),
+		"direct_send_latency":    dt.directSendLatency.GetStats(),
+		"write_message_latency":  dt.writeMessageLatency.GetStats(),
+		"metrics_update_latency": dt.metricsUpdateLatency.GetStats(),
 	}
 }
 
@@ -479,7 +447,21 @@ func (pt *PerformanceTracker) GetStats() map[string]interface{} {
 	qps := float64(totalReqs) / uptime.Seconds()
 	throughputMBps := float64(totalBytes) / (1024 * 1024) / uptime.Seconds()
 
-	var avgLatency, minLatency, maxLatency, p95Latency, p99Latency time.Duration
+	// 获取系统资源使用情况
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	// 计算内存使用率（简化版本，使用已分配内存除以系统内存）
+	memoryUsageMB := int64(m.Alloc / 1024 / 1024)
+	memoryUsagePercent := float64(m.Alloc) / float64(m.Sys) * 100
+
+	// 获取CPU使用率（简化版本，使用GC时间比例估算）
+	cpuUsagePercent := float64(m.GCCPUFraction) * 100
+	if cpuUsagePercent > 100 {
+		cpuUsagePercent = 100
+	}
+
+	var avgLatency, minLatency, maxLatency time.Duration
 	if len(pt.requestLatencies) > 0 {
 		var total time.Duration
 		minLatency = pt.requestLatencies[0]
@@ -500,49 +482,29 @@ func (pt *PerformanceTracker) GetStats() map[string]interface{} {
 
 		avgLatency = total / time.Duration(len(latencies))
 
-		// 计算P95和P99
-		if len(latencies) >= 20 {
-			// 简单排序计算百分位数
-			for i := 0; i < len(latencies)-1; i++ {
-				for j := i + 1; j < len(latencies); j++ {
-					if latencies[i] > latencies[j] {
-						latencies[i], latencies[j] = latencies[j], latencies[i]
-					}
-				}
-			}
-
-			p95Index := int(float64(len(latencies)) * 0.95)
-			p99Index := int(float64(len(latencies)) * 0.99)
-
-			if p95Index < len(latencies) {
-				p95Latency = latencies[p95Index]
-			}
-			if p99Index < len(latencies) {
-				p99Latency = latencies[p99Index]
-			}
-		}
 	}
 
 	// 获取详细时延统计
 	detailedStats := pt.detailedLatencyTracker.GetDetailedStats()
 
 	return map[string]interface{}{
-		"uptime_seconds":     uptime.Seconds(),
-		"total_connections":  totalConns,
-		"active_connections": activeConns,
-		"total_requests":     totalReqs,
-		"total_responses":    totalResps,
-		"total_errors":       totalErrs,
-		"success_rate":       float64(totalResps) / float64(totalReqs) * 100,
-		"qps":                qps,
-		"throughput_mbps":    throughputMBps,
-		"total_bytes":        totalBytes,
-		"avg_latency_ms":     float64(avgLatency.Nanoseconds()) / 1e6,
-		"min_latency_ms":     float64(minLatency.Nanoseconds()) / 1e6,
-		"max_latency_ms":     float64(maxLatency.Nanoseconds()) / 1e6,
-		"p95_latency_ms":     float64(p95Latency.Nanoseconds()) / 1e6,
-		"p99_latency_ms":     float64(p99Latency.Nanoseconds()) / 1e6,
-		"latency_samples":    len(pt.requestLatencies),
-		"detailed_latency":   detailedStats, // 新增详细时延统计
+		"uptime_seconds":       uptime.Seconds(),
+		"total_connections":    totalConns,
+		"active_connections":   activeConns,
+		"total_requests":       totalReqs,
+		"total_responses":      totalResps,
+		"total_errors":         totalErrs,
+		"success_rate":         float64(totalResps) / float64(totalReqs) * 100,
+		"qps":                  qps,
+		"throughput_mbps":      throughputMBps,
+		"total_bytes":          totalBytes,
+		"avg_latency_ms":       float64(avgLatency.Nanoseconds()) / 1e6,
+		"min_latency_ms":       float64(minLatency.Nanoseconds()) / 1e6,
+		"max_latency_ms":       float64(maxLatency.Nanoseconds()) / 1e6,
+		"latency_samples":      len(pt.requestLatencies),
+		"cpu_usage_percent":    cpuUsagePercent,
+		"memory_usage_percent": memoryUsagePercent,
+		"memory_usage_mb":      memoryUsageMB,
+		"detailed_latency":     detailedStats, // 新增详细时延统计
 	}
 }

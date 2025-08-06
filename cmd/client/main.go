@@ -89,6 +89,8 @@ func main() {
 		multipleClients = flag.Int("clients", 1, "并发客户端数量")
 		maxRequests     = flag.Int("max-requests", 0, "最大请求数量 (0表示无限)")
 		enableReconnect = flag.Bool("enable-reconnect", false, "性能模式下启用重连测试 (默认关闭)")
+		openidStart     = flag.Int("openid-start", 10000, "性能模式openid起始值 (默认10000)")
+		openidEnd       = flag.Int("openid-end", 99999, "性能模式openid结束值 (默认99999)")
 
 		// 测试参数
 		interactive  = flag.Bool("interactive", false, "交互模式")
@@ -124,11 +126,14 @@ func main() {
 		fmt.Println("  ./client -server localhost:8443 -performance -clients 5 -request-interval 500ms")
 		fmt.Println("  # 性能测试(启用重连测试)")
 		fmt.Println("  ./client -server localhost:8443 -performance -clients 3 -enable-reconnect")
+		fmt.Println("  # 性能测试(自定义openid范围)")
+		fmt.Println("  ./client -server localhost:8443 -performance -clients 10 -openid-start 20000 -openid-end 29999")
 		fmt.Println("  # 持续测试模式")
 		fmt.Println("  ./client -server localhost:8443 -openid 10010 -performance -max-requests 1000")
 		fmt.Println()
 		fmt.Println("注意:")
 		fmt.Println("  OpenID必须是5位数字格式(10000-99999)，如未指定将自动生成")
+		fmt.Println("  性能模式下可通过 -openid-start 和 -openid-end 自定义openid分配范围")
 		os.Exit(0)
 	}
 
@@ -167,7 +172,7 @@ func main() {
 	if *performanceMode {
 		// 性能测试模式
 		runPerformanceTest(ctx, *serverAddr, *openID, *skipTLSVerify, *connectTimeout, *heartbeatInterval,
-			*multipleClients, *requestInterval, *maxRequests, *enableReconnect, sigCh)
+			*multipleClients, *requestInterval, *maxRequests, *enableReconnect, *openidStart, *openidEnd, sigCh)
 	} else if *interactive {
 		// 交互模式
 		runSingleClient(ctx, *serverAddr, *clientID, *openID, *skipTLSVerify, *connectTimeout, *heartbeatInterval, true, sigCh)
@@ -184,7 +189,7 @@ func main() {
 // runPerformanceTest 运行性能测试
 func runPerformanceTest(ctx context.Context, serverAddr, openID string, skipTLSVerify bool,
 	connectTimeout, heartbeatInterval time.Duration, clientCount int, requestInterval time.Duration,
-	maxRequests int, enableReconnect bool, sigCh <-chan os.Signal) {
+	maxRequests int, enableReconnect bool, openidStart, openidEnd int, sigCh <-chan os.Signal) {
 
 	fmt.Println("========================================")
 	fmt.Println("         性能测试模式")
@@ -194,6 +199,7 @@ func runPerformanceTest(ctx context.Context, serverAddr, openID string, skipTLSV
 	fmt.Printf("请求间隔:   %v\n", requestInterval)
 	fmt.Printf("最大请求:   %d (0=无限)\n", maxRequests)
 	fmt.Printf("重连测试:   %v\n", enableReconnect)
+	fmt.Printf("OpenID范围: %d-%d\n", openidStart, openidEnd)
 	fmt.Println("========================================")
 
 	var wg sync.WaitGroup
@@ -208,7 +214,7 @@ func runPerformanceTest(ctx context.Context, serverAddr, openID string, skipTLSV
 		go func(clientIndex int) {
 			defer wg.Done()
 			runPerformanceClient(ctx, clientIndex, serverAddr, openID, skipTLSVerify, connectTimeout,
-				heartbeatInterval, requestInterval, maxRequests, enableReconnect, globalStats, sigCh)
+				heartbeatInterval, requestInterval, maxRequests, enableReconnect, openidStart, openidEnd, globalStats, sigCh)
 		}(i)
 
 		// 错开启动时间
@@ -236,11 +242,16 @@ func runPerformanceTest(ctx context.Context, serverAddr, openID string, skipTLSV
 // runPerformanceClient 运行单个性能测试客户端
 func runPerformanceClient(ctx context.Context, clientIndex int, serverAddr, openID string,
 	skipTLSVerify bool, connectTimeout, heartbeatInterval, requestInterval time.Duration,
-	maxRequests int, enableReconnect bool, stats *PerformanceStats, sigCh <-chan os.Signal) {
+	maxRequests int, enableReconnect bool, openidStart, openidEnd int, stats *PerformanceStats, sigCh <-chan os.Signal) {
 
 	clientID := fmt.Sprintf("perf-client-%d", clientIndex)
-	// 为性能测试生成不同的有效OpenID，支持更大范围避免冲突
-	baseNum := 10000 + clientIndex
+	// 为性能测试生成不同的有效OpenID，在指定范围内避免冲突
+	openidRange := openidEnd - openidStart + 1
+	if openidRange <= 0 {
+		openidRange = 90000 // 默认范围 10000-99999
+		openidStart = 10000
+	}
+	baseNum := openidStart + (clientIndex % openidRange)
 	performanceOpenID := fmt.Sprintf("%05d", baseNum)
 
 	config := &client.Config{
