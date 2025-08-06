@@ -100,6 +100,17 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	}
 	stateValidateLatency := time.Since(stateValidateStart)
 
+	// 过载保护：检查上游并发限制
+	if !s.overloadProtector.AllowUpstreamRequest() {
+		log.Printf("上游请求被过载保护拒绝 - 会话: %s, 动作: %s", sess.ID, businessReq.Action)
+		s.sendErrorResponse(sess, req.MsgId, 503, "上游服务繁忙", "上游服务当前负载过高，请稍后重试")
+		return false
+	}
+
+	// 通知过载保护器上游请求开始
+	s.overloadProtector.OnUpstreamStart()
+	defer s.overloadProtector.OnUpstreamEnd() // 确保在函数结束时调用
+
 	// 构造上游请求（添加客户端序列号） - 记录构造请求时延
 	buildReqStart := time.Now()
 	upstreamReq := &pb.UpstreamRequest{
@@ -113,9 +124,17 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	}
 	buildReqLatency := time.Since(buildReqStart)
 
+	// 创建带超时的上游请求上下文
+	upstreamCtx := ctx
+	if s.overloadProtector.config != nil && s.overloadProtector.config.UpstreamTimeout > 0 {
+		var cancel context.CancelFunc
+		upstreamCtx, cancel = context.WithTimeout(ctx, s.overloadProtector.config.UpstreamTimeout)
+		defer cancel()
+	}
+
 	// 调用上游服务 - 记录上游调用时延
 	upstreamStart := time.Now()
-	upstreamResp, err := s.upstreamClient.ProcessRequest(ctx, upstreamReq)
+	upstreamResp, err := s.upstreamClient.ProcessRequest(upstreamCtx, upstreamReq)
 	upstreamLatency := time.Since(upstreamStart)
 	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
 

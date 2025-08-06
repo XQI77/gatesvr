@@ -60,6 +60,9 @@ func (s *Server) startHTTPServer() error {
 	
 	// START消息处理器监控API
 	mux.HandleFunc("/start-processor", s.handleStartProcessor)
+	
+	// 过载保护监控API
+	mux.HandleFunc("/overload-protection", s.handleOverloadProtection)
 
 	// 注意：单播推送现在通过gRPC接口提供，HTTP API已移除
 

@@ -223,20 +223,37 @@ func main() {
 		log.Fatalf("证书文件验证失败: %v", err)
 	}
 
+	// 转换过载保护配置
+	var overloadConfig *gateway.OverloadConfig
+	if gatewayConfig.OverloadProtection != nil {
+		overloadConfig = &gateway.OverloadConfig{
+			Enabled:                      gatewayConfig.OverloadProtection.Enabled,
+			MaxConnections:              gatewayConfig.OverloadProtection.MaxConnections,
+			ConnectionWarningThreshold:   gatewayConfig.OverloadProtection.ConnectionWarningThreshold,
+			MaxQPS:                      gatewayConfig.OverloadProtection.MaxQPS,
+			QPSWarningThreshold:         gatewayConfig.OverloadProtection.QPSWarningThreshold,
+			QPSWindowSeconds:            gatewayConfig.OverloadProtection.QPSWindowSeconds,
+			MaxUpstreamConcurrent:       gatewayConfig.OverloadProtection.MaxUpstreamConcurrent,
+			UpstreamTimeout:             gatewayConfig.OverloadProtection.UpstreamTimeout,
+			UpstreamWarningThreshold:    gatewayConfig.OverloadProtection.UpstreamWarningThreshold,
+		}
+	}
+
 	// 创建服务器配置
 	serverConfig := &gateway.Config{
-		QUICAddr:       gatewayConfig.QUICAddr,
-		HTTPAddr:       gatewayConfig.HTTPAddr,
-		GRPCAddr:       gatewayConfig.GRPCAddr,
-		MetricsAddr:    gatewayConfig.MetricsAddr,
-		UpstreamAddr:   gatewayConfig.UpstreamAddr,
-		TLSCertFile:    gatewayConfig.TLSCertFile,
-		TLSKeyFile:     gatewayConfig.TLSKeyFile,
-		SessionTimeout: gatewayConfig.SessionTimeout,
-		AckTimeout:     gatewayConfig.AckTimeout,
-		MaxRetries:     gatewayConfig.MaxRetries,
-		BackupConfig:   gatewayConfig.BackupConfig,
-		ServerID:       gatewayConfig.ServerID,
+		QUICAddr:                 gatewayConfig.QUICAddr,
+		HTTPAddr:                 gatewayConfig.HTTPAddr,
+		GRPCAddr:                 gatewayConfig.GRPCAddr,
+		MetricsAddr:              gatewayConfig.MetricsAddr,
+		UpstreamAddr:             gatewayConfig.UpstreamAddr,
+		TLSCertFile:              gatewayConfig.TLSCertFile,
+		TLSKeyFile:               gatewayConfig.TLSKeyFile,
+		SessionTimeout:           gatewayConfig.SessionTimeout,
+		AckTimeout:               gatewayConfig.AckTimeout,
+		MaxRetries:               gatewayConfig.MaxRetries,
+		BackupConfig:             gatewayConfig.BackupConfig,
+		ServerID:                 gatewayConfig.ServerID,
+		OverloadProtectionConfig: overloadConfig,
 	}
 
 	// 显示启动信息

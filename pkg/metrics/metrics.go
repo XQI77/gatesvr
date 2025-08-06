@@ -29,6 +29,13 @@ type GateServerMetrics struct {
 
 	// 错误计数器
 	errorCounter *prometheus.CounterVec
+
+	// 过载保护指标
+	connectionsRejected *prometheus.CounterVec // 被拒绝的连接数
+	requestsRejected    *prometheus.CounterVec // 被拒绝的请求数
+	upstreamRejected    *prometheus.CounterVec // 被拒绝的上游请求数
+	currentQPS          prometheus.Gauge        // 当前QPS
+	upstreamConcurrent  prometheus.Gauge        // 当前上游并发数
 }
 
 // NewGateServerMetrics 创建新的监控指标实例
@@ -82,6 +89,41 @@ func NewGateServerMetrics() *GateServerMetrics {
 			},
 			[]string{"error_type"},
 		),
+
+		// 过载保护指标
+		connectionsRejected: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "gatesvr_connections_rejected_total",
+				Help: "被过载保护拒绝的连接总数",
+			},
+			[]string{"reason"},
+		),
+
+		requestsRejected: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "gatesvr_requests_rejected_total",
+				Help: "被过载保护拒绝的请求总数",
+			},
+			[]string{"reason"},
+		),
+
+		upstreamRejected: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "gatesvr_upstream_rejected_total",
+				Help: "被过载保护拒绝的上游请求总数",
+			},
+			[]string{"reason"},
+		),
+
+		currentQPS: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "gatesvr_current_qps",
+			Help: "当前每秒查询率",
+		}),
+
+		upstreamConcurrent: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "gatesvr_upstream_concurrent",
+			Help: "当前上游并发请求数",
+		}),
 	}
 }
 
@@ -118,6 +160,31 @@ func (m *GateServerMetrics) IncError(errorType string) {
 // RemoveSession 移除会话相关的指标
 func (m *GateServerMetrics) RemoveSession(sessionID string) {
 	m.outboundQueueSize.DeleteLabelValues(sessionID)
+}
+
+// IncConnectionsRejected 增加被拒绝的连接数
+func (m *GateServerMetrics) IncConnectionsRejected(reason string) {
+	m.connectionsRejected.WithLabelValues(reason).Inc()
+}
+
+// IncRequestsRejected 增加被拒绝的请求数
+func (m *GateServerMetrics) IncRequestsRejected(reason string) {
+	m.requestsRejected.WithLabelValues(reason).Inc()
+}
+
+// IncUpstreamRejected 增加被拒绝的上游请求数
+func (m *GateServerMetrics) IncUpstreamRejected(reason string) {
+	m.upstreamRejected.WithLabelValues(reason).Inc()
+}
+
+// SetCurrentQPS 设置当前QPS
+func (m *GateServerMetrics) SetCurrentQPS(qps float64) {
+	m.currentQPS.Set(qps)
+}
+
+// SetUpstreamConcurrent 设置当前上游并发数
+func (m *GateServerMetrics) SetUpstreamConcurrent(count int64) {
+	m.upstreamConcurrent.Set(float64(count))
 }
 
 // MetricsServer 监控指标服务器

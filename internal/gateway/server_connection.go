@@ -45,8 +45,16 @@ func (s *Server) acceptConnections(ctx context.Context) {
 				continue
 			}
 
+			// 过载保护：检查是否允许新连接
+			if !s.overloadProtector.AllowNewConnection() {
+				log.Printf("连接被过载保护拒绝 - 来源: %s", conn.RemoteAddr())
+				conn.CloseWithError(503, "server overloaded")
+				continue
+			}
+
 			// 记录新连接
 			s.performanceTracker.RecordConnection()
+			s.overloadProtector.OnConnectionStart()
 
 			// 为每个连接启动处理goroutine
 			s.wg.Add(1)
@@ -61,6 +69,7 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	defer func() {
 		conn.CloseWithError(0, "connection closed")
 		s.performanceTracker.RecordDisconnection()
+		s.overloadProtector.OnConnectionEnd() // 连接结束时通知过载保护器
 	}()
 
 	log.Printf("新的QUIC连接: %s", conn.RemoteAddr())
@@ -283,6 +292,17 @@ func (s *Server) handleMessageEvent(ctx context.Context, session *session.Sessio
 		return
 	}
 
+	// 过载保护：检查是否允许新请求（除了心跳和ACK请求）
+	if clientReq.Type != pb.RequestType_REQUEST_HEARTBEAT &&
+		clientReq.Type != pb.RequestType_REQUEST_ACK {
+		if !s.overloadProtector.AllowNewRequest() {
+			log.Printf("请求被过载保护拒绝 - 会话: %s, 类型: %d", session.ID, clientReq.Type)
+			s.sendOverloadErrorResponse(session, clientReq)
+			s.performanceTracker.RecordError()
+			return
+		}
+	}
+
 	// 记录解析时延
 	parseLatency := parseEndTime.Sub(parseStartTime)
 	s.performanceTracker.RecordParseLatency(parseLatency)
@@ -326,4 +346,27 @@ func (s *Server) handleMessageEvent(ctx context.Context, session *session.Sessio
 	// 详细日志记录
 	log.Printf("消息处理完成 - 会话: %s, 类型: %d, 成功: %t, 处理时延: %.2fms",
 		session.ID, clientReq.Type, success, totalProcessLatency.Seconds()*1000)
+}
+
+// sendOverloadErrorResponse 发送过载错误响应
+func (s *Server) sendOverloadErrorResponse(session *session.Session, req *pb.ClientRequest) {
+	// 根据请求类型发送相应的错误响应
+	switch req.Type {
+	case pb.RequestType_REQUEST_START:
+		if err := s.orderedSender.SendStartResponse(session, req.MsgId, false,
+			nil, 0, ""); err != nil {
+			log.Printf("发送START过载错误响应失败: %v", err)
+		}
+	case pb.RequestType_REQUEST_BUSINESS:
+		if err := s.orderedSender.SendErrorResponse(session, req.MsgId, 503, "服务器过载", "请求过多，请稍后重试"); err != nil {
+			log.Printf("发送业务请求过载错误响应失败: %v", err)
+		}
+	case pb.RequestType_REQUEST_STOP:
+		// STOP请求不需要响应
+	default:
+		// 其他类型请求统一返回错误响应
+		if err := s.orderedSender.SendErrorResponse(session, req.MsgId, 503, "服务器过载", "请求过多，请稍后重试"); err != nil {
+			log.Printf("发送过载错误响应失败: %v", err)
+		}
+	}
 }

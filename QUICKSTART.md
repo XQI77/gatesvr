@@ -300,6 +300,9 @@ make perf-test
 # 启动5个并发客户端进行性能测试
 .\bin\client.exe -server localhost:8443 -performance -clients 100 -request-interval 200ms
 
+#设置客户端openid范围
+./client -server localhost:8443 -performance -clients 10 -openid-start 20000 -openid-end 29999
+
 # 同时在另一个终端监控性能
 .\bin\monitor.exe -server localhost:8080 -continuous -interval 2s
 ```

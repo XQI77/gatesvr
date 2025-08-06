@@ -47,6 +47,9 @@ type Server struct {
 	// 备份管理器
 	backupManager backup.BackupManager // 备份管理器
 
+	// 过载保护器
+	overloadProtector *OverloadProtector // 过载保护器
+
 	// 状态管理
 	running      bool
 	runningMutex sync.RWMutex
@@ -103,6 +106,9 @@ func NewServer(config *Config) *Server {
 		
 		log.Printf("备份管理器已初始化 - 服务器ID: %s, 模式: %d", config.ServerID, config.BackupConfig.Sync.Mode)
 	}
+
+	// 初始化过载保护器
+	server.overloadProtector = NewOverloadProtector(config.OverloadProtectionConfig, server.metrics)
 
 	return server
 }

@@ -35,3 +35,21 @@ backup:
     batch_size: 50           # 同步批次大小
     timeout: "200ms"         # 同步超时
     buffer_size: 1000        # 同步缓冲区大小
+
+# 过载保护配置
+overload_protection:
+  enabled: true                         # 启用过载保护
+  
+  # 连接保护
+  max_connections: 10000                 # 最大连接数
+  connection_warning_threshold: 8000     # 连接警告阈值
+  
+  # QPS保护
+  max_qps: 20000                        # 最大QPS
+  qps_warning_threshold: 16000          # QPS警告阈值
+  qps_window_seconds: 10               # QPS统计窗口时间（秒）
+  
+  # 上游保护
+  max_upstream_concurrent: 10000         # 最大上游并发数
+  upstream_timeout: "30s"              # 上游请求超时时间
+  upstream_warning_threshold: 80       # 上游并发警告阈值

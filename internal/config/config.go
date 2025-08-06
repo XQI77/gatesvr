@@ -12,8 +12,9 @@ import (
 
 // Config 应用程序配置
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Backup BackupConfig `yaml:"backup"`
+	Server            ServerConfig            `yaml:"server"`
+	Backup            BackupConfig            `yaml:"backup"`
+	OverloadProtection OverloadProtectionConfig `yaml:"overload_protection"`
 }
 
 // ServerConfig 服务器配置
@@ -55,6 +56,19 @@ type BackupConfig struct {
 	ReadOnly  bool            `yaml:"readonly"`
 	Heartbeat HeartbeatConfig `yaml:"heartbeat"`
 	Sync      SyncConfig      `yaml:"sync"`
+}
+
+// OverloadProtectionConfig 过载保护配置
+type OverloadProtectionConfig struct {
+	Enabled                      bool   `yaml:"enabled"`
+	MaxConnections              int    `yaml:"max_connections"`
+	ConnectionWarningThreshold   int    `yaml:"connection_warning_threshold"`
+	MaxQPS                      int    `yaml:"max_qps"`
+	QPSWarningThreshold         int    `yaml:"qps_warning_threshold"`
+	QPSWindowSeconds            int    `yaml:"qps_window_seconds"`
+	MaxUpstreamConcurrent       int    `yaml:"max_upstream_concurrent"`
+	UpstreamTimeout             string `yaml:"upstream_timeout"`
+	UpstreamWarningThreshold    int    `yaml:"upstream_warning_threshold"`
 }
 
 // Load 从文件加载配置
@@ -170,21 +184,80 @@ func (c *Config) ToGatewayConfig() (*GatewayConfig, error) {
 		config.BackupConfig.SyncAddr = syncAddr
 	}
 
+	// 处理过载保护配置
+	if c.OverloadProtection.Enabled || c.OverloadProtection.MaxConnections > 0 {
+		upstreamTimeout := 30 * time.Second // 默认值
+		if c.OverloadProtection.UpstreamTimeout != "" {
+			if parsed, err := c.ParseDuration(c.OverloadProtection.UpstreamTimeout); err == nil {
+				upstreamTimeout = parsed
+			}
+		}
+
+		config.OverloadProtection = &OverloadProtectionGatewayConfig{
+			Enabled:                      c.OverloadProtection.Enabled,
+			MaxConnections:              c.OverloadProtection.MaxConnections,
+			ConnectionWarningThreshold:   c.OverloadProtection.ConnectionWarningThreshold,
+			MaxQPS:                      c.OverloadProtection.MaxQPS,
+			QPSWarningThreshold:         c.OverloadProtection.QPSWarningThreshold,
+			QPSWindowSeconds:            c.OverloadProtection.QPSWindowSeconds,
+			MaxUpstreamConcurrent:       c.OverloadProtection.MaxUpstreamConcurrent,
+			UpstreamTimeout:             upstreamTimeout,
+			UpstreamWarningThreshold:    c.OverloadProtection.UpstreamWarningThreshold,
+		}
+
+		// 设置默认值
+		if config.OverloadProtection.MaxConnections == 0 {
+			config.OverloadProtection.MaxConnections = 1000
+		}
+		if config.OverloadProtection.ConnectionWarningThreshold == 0 {
+			config.OverloadProtection.ConnectionWarningThreshold = 800
+		}
+		if config.OverloadProtection.MaxQPS == 0 {
+			config.OverloadProtection.MaxQPS = 2000
+		}
+		if config.OverloadProtection.QPSWarningThreshold == 0 {
+			config.OverloadProtection.QPSWarningThreshold = 1600
+		}
+		if config.OverloadProtection.QPSWindowSeconds == 0 {
+			config.OverloadProtection.QPSWindowSeconds = 10
+		}
+		if config.OverloadProtection.MaxUpstreamConcurrent == 0 {
+			config.OverloadProtection.MaxUpstreamConcurrent = 100
+		}
+		if config.OverloadProtection.UpstreamWarningThreshold == 0 {
+			config.OverloadProtection.UpstreamWarningThreshold = 80
+		}
+	}
+
 	return config, nil
 }
 
 // GatewayConfig 网关配置（兼容现有接口）
 type GatewayConfig struct {
-	QUICAddr       string
-	HTTPAddr       string
-	GRPCAddr       string
-	MetricsAddr    string
-	UpstreamAddr   string
-	TLSCertFile    string
-	TLSKeyFile     string
-	SessionTimeout time.Duration
-	AckTimeout     time.Duration
-	MaxRetries     int
-	BackupConfig   *backup.BackupConfig
-	ServerID       string
+	QUICAddr            string
+	HTTPAddr            string
+	GRPCAddr            string
+	MetricsAddr         string
+	UpstreamAddr        string
+	TLSCertFile         string
+	TLSKeyFile          string
+	SessionTimeout      time.Duration
+	AckTimeout          time.Duration
+	MaxRetries          int
+	BackupConfig        *backup.BackupConfig
+	ServerID            string
+	OverloadProtection  *OverloadProtectionGatewayConfig
+}
+
+// OverloadProtectionGatewayConfig 网关过载保护配置
+type OverloadProtectionGatewayConfig struct {
+	Enabled                      bool
+	MaxConnections              int
+	ConnectionWarningThreshold   int
+	MaxQPS                      int
+	QPSWarningThreshold         int
+	QPSWindowSeconds            int
+	MaxUpstreamConcurrent       int
+	UpstreamTimeout             time.Duration
+	UpstreamWarningThreshold    int
 }

@@ -31,6 +31,9 @@ type Config struct {
 	// 备份配置
 	BackupConfig *backup.BackupConfig // 热备份配置
 	ServerID     string               // 服务器ID
+
+	// 过载保护配置
+	OverloadProtectionConfig *OverloadConfig // 过载保护配置
 }
 
 // StartProcessorConfig START消息处理器配置

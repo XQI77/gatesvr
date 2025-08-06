@@ -633,3 +633,145 @@ func (s *Server) handleStartProcessor(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(response)
 }
+
+// handleOverloadProtection 处理过载保护状态查询 - 新增
+func (s *Server) handleOverloadProtection(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.overloadProtector == nil {
+		response := map[string]interface{}{
+			"error":       "过载保护器未初始化",
+			"description": "系统未启用过载保护功能",
+			"timestamp":   time.Now().Unix(),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	stats := s.overloadProtector.GetStats()
+
+	// 添加详细状态分析
+	response := map[string]interface{}{
+		"overload_protection_status": stats,
+		"protection_levels": map[string]interface{}{
+			"connection_level": map[string]interface{}{
+				"current_connections":       stats["current_connections"],
+				"max_connections":          stats["max_connections"],
+				"connection_usage_percent": float64(stats["current_connections"].(int64)) / float64(stats["max_connections"].(int)) * 100,
+				"connections_rejected":     stats["connections_rejected"],
+				"status": func() string {
+					usage := float64(stats["current_connections"].(int64)) / float64(stats["max_connections"].(int)) * 100
+					if usage > 95 {
+						return "critical"
+					} else if usage > 80 {
+						return "warning"
+					}
+					return "normal"
+				}(),
+			},
+			"qps_level": map[string]interface{}{
+				"current_qps":       stats["current_qps"],
+				"max_qps":          stats["max_qps"],
+				"qps_usage_percent": func() float64 {
+					if stats["max_qps"].(int) == 0 {
+						return 0
+					}
+					return stats["current_qps"].(float64) / float64(stats["max_qps"].(int)) * 100
+				}(),
+				"requests_rejected": stats["requests_rejected"],
+				"status": func() string {
+					if stats["max_qps"].(int) == 0 {
+						return "disabled"
+					}
+					usage := stats["current_qps"].(float64) / float64(stats["max_qps"].(int)) * 100
+					if usage > 95 {
+						return "critical"
+					} else if usage > 80 {
+						return "warning"
+					}
+					return "normal"
+				}(),
+			},
+			"upstream_level": map[string]interface{}{
+				"upstream_active":         stats["upstream_active"],
+				"max_upstream":           stats["max_upstream"],
+				"upstream_usage_percent": float64(stats["upstream_active"].(int64)) / float64(stats["max_upstream"].(int)) * 100,
+				"upstream_rejected":      stats["upstream_rejected"],
+				"status": func() string {
+					usage := float64(stats["upstream_active"].(int64)) / float64(stats["max_upstream"].(int)) * 100
+					if usage > 95 {
+						return "critical"
+					} else if usage > 80 {
+						return "warning"
+					}
+					return "normal"
+				}(),
+			},
+		},
+		"overall_status": func() string {
+			connectionUsage := float64(stats["current_connections"].(int64)) / float64(stats["max_connections"].(int)) * 100
+			var qpsUsage float64
+			if stats["max_qps"].(int) > 0 {
+				qpsUsage = stats["current_qps"].(float64) / float64(stats["max_qps"].(int)) * 100
+			}
+			upstreamUsage := float64(stats["upstream_active"].(int64)) / float64(stats["max_upstream"].(int)) * 100
+
+			maxUsage := connectionUsage
+			if qpsUsage > maxUsage {
+				maxUsage = qpsUsage
+			}
+			if upstreamUsage > maxUsage {
+				maxUsage = upstreamUsage
+			}
+
+			if maxUsage > 95 {
+				return "critical"
+			} else if maxUsage > 80 {
+				return "warning"
+			}
+			return "healthy"
+		}(),
+		"recommendations": func() []string {
+			var recommendations []string
+			connectionUsage := float64(stats["current_connections"].(int64)) / float64(stats["max_connections"].(int)) * 100
+			var qpsUsage float64
+			if stats["max_qps"].(int) > 0 {
+				qpsUsage = stats["current_qps"].(float64) / float64(stats["max_qps"].(int)) * 100
+			}
+			upstreamUsage := float64(stats["upstream_active"].(int64)) / float64(stats["max_upstream"].(int)) * 100
+
+			if connectionUsage > 90 {
+				recommendations = append(recommendations, "连接数接近上限，考虑增加最大连接数或优化连接管理")
+			}
+			if qpsUsage > 90 {
+				recommendations = append(recommendations, "QPS接近上限，考虑增加最大QPS或优化请求处理性能")
+			}
+			if upstreamUsage > 90 {
+				recommendations = append(recommendations, "上游并发接近上限，考虑增加上游并发数或优化上游服务性能")
+			}
+			if stats["connections_rejected"].(int64) > 0 {
+				recommendations = append(recommendations, "有连接被拒绝，考虑调整连接保护策略")
+			}
+			if stats["requests_rejected"].(int64) > 0 {
+				recommendations = append(recommendations, "有请求被拒绝，考虑调整QPS保护策略")
+			}
+			if stats["upstream_rejected"].(int64) > 0 {
+				recommendations = append(recommendations, "有上游请求被拒绝，考虑调整上游保护策略")
+			}
+			if len(recommendations) == 0 {
+				recommendations = append(recommendations, "过载保护运行正常，无需调整")
+			}
+			return recommendations
+		}(),
+		"configuration": map[string]interface{}{
+			"enabled":                      stats["enabled"],
+			"uptime_seconds":              stats["uptime_seconds"],
+			"connection_warning_threshold": "80% of max_connections",
+			"qps_warning_threshold":       "80% of max_qps", 
+			"upstream_warning_threshold":  "80% of max_upstream",
+		},
+		"timestamp": time.Now().Unix(),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
