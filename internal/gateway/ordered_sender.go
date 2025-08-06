@@ -204,13 +204,3 @@ func (oms *OrderedMessageSender) ResyncSessionSequence(sess *session.Session, cl
 
 	log.Printf("会话序列号重同步完成 - 会话: %s, 客户端ACK: %d", sess.ID, clientAckSeq)
 }
-
-// ForceFlushQueue 强制清空队列（紧急情况使用）
-func (oms *OrderedMessageSender) ForceFlushQueue(sess *session.Session) int {
-	orderedQueue := sess.GetOrderedQueue()
-	if orderedQueue == nil {
-		return 0
-	}
-
-	return orderedQueue.ForceFlushQueue()
-}

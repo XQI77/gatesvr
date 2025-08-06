@@ -1,0 +1,31 @@
+server:
+  quic_addr: ":8080"
+  http_addr: ":8090" 
+  grpc_addr: ":8082"
+  metrics_addr: ":9090"
+  
+  # 多上游服务配置 - 测试用
+  upstream_services:
+    hello:
+      - "localhost:8081"      # Hello服务端口
+    business:
+      - "localhost:8082"      # Business服务端口  
+    zone:
+      - "localhost:8083"      # Zone服务端口
+  
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+  session_timeout: "5m"
+  ack_timeout: "30s"
+  max_retries: 3
+
+backup:
+  enabled: false
+
+overload_protection:
+  enabled: true
+  max_connections: 1000
+  max_qps: 2000
+  qps_window_seconds: 10
+  max_upstream_concurrent: 100
+  upstream_timeout: "30s"

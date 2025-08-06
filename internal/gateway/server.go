@@ -15,6 +15,7 @@ import (
 	"gatesvr/internal/backup"
 	"gatesvr/internal/message"
 	"gatesvr/internal/session"
+	"gatesvr/internal/upstream"
 	"gatesvr/pkg/metrics"
 	pb "gatesvr/proto"
 )
@@ -34,9 +35,10 @@ type Server struct {
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
 	startProcessor     *StartMessageProcessor     // START消息异步处理器
 
-	// gRPC客户端
-	upstreamClient pb.UpstreamServiceClient
-	upstreamConn   *grpc.ClientConn
+	// 上游服务管理
+	upstreamServices *upstream.UpstreamServices // 多上游服务管理器
+	upstreamClient   pb.UpstreamServiceClient   // 保留向后兼容
+	upstreamConn     *grpc.ClientConn           // 保留向后兼容
 
 	// 服务器实例
 	quicListener  *quic.Listener
@@ -67,8 +69,12 @@ func NewServer(config *Config) *Server {
 		messageCodec:       message.NewMessageCodec(),
 		metrics:            metrics.NewGateServerMetrics(),
 		performanceTracker: NewPerformanceTracker(),
+		upstreamServices:   upstream.NewUpstreamServices(),
 		stopCh:             make(chan struct{}),
 	}
+
+	// 初始化多上游服务配置
+	server.initUpstreamServices()
 	
 	// 初始化有序消息发送器
 	server.orderedSender = NewOrderedMessageSender(server)
@@ -111,6 +117,33 @@ func NewServer(config *Config) *Server {
 	server.overloadProtector = NewOverloadProtector(config.OverloadProtectionConfig, server.metrics)
 
 	return server
+}
+
+// initUpstreamServices 初始化多上游服务配置
+func (s *Server) initUpstreamServices() {
+	// 如果有新的多上游配置，使用它
+	if s.config.UpstreamServices != nil && len(s.config.UpstreamServices) > 0 {
+		for serviceTypeStr, addresses := range s.config.UpstreamServices {
+			serviceType := upstream.ServiceType(serviceTypeStr)
+			s.upstreamServices.AddService(serviceType, addresses)
+			log.Printf("添加上游服务 - 类型: %s, 地址: %v", serviceType, addresses)
+		}
+	} else if s.config.UpstreamAddr != "" {
+		// 向后兼容：如果只有单一上游地址，将其用作business服务
+		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{s.config.UpstreamAddr})
+		log.Printf("向后兼容模式 - 使用单一上游地址作为business服务: %s", s.config.UpstreamAddr)
+	} else {
+		// 使用默认配置
+		s.upstreamServices.AddService(upstream.ServiceTypeHello, []string{"localhost:8081"})
+		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{"localhost:8082"}) 
+		s.upstreamServices.AddService(upstream.ServiceTypeZone, []string{"localhost:8083"})
+		log.Printf("使用默认上游服务配置")
+	}
+
+	// 输出配置摘要
+	stats := s.upstreamServices.GetStats()
+	log.Printf("上游服务初始化完成 - 总服务数: %d, 已启用: %d", 
+		stats["total_services"], stats["enabled_services"])
 }
 
 // Start 启动网关服务器

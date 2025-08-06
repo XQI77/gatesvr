@@ -1,0 +1,60 @@
+# gatesvr 网关服务配置示例
+
+server:
+  quic_addr: ":8080"          # QUIC监听地址
+  http_addr: ":8090"          # HTTP API地址  
+  grpc_addr: ":8082"          # gRPC服务地址
+  metrics_addr: ":9090"       # 监控地址
+  
+  # 传统单一上游配置（向后兼容）
+  # upstream_addr: "localhost:8081"
+  
+  # 新的多上游服务配置
+  upstream_services:
+    hello:                    # Hello服务（登录、认证相关）
+      - "localhost:8081"
+      - "localhost:8084"      # 可配置多个地址实现负载均衡
+    business:                 # Business服务（业务逻辑处理）
+      - "localhost:8082"
+      - "localhost:8085"
+    zone:                     # Zone服务（区域功能、特殊服务）
+      - "localhost:8083"
+      - "localhost:8086"
+  
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+  session_timeout: "5m"
+  ack_timeout: "30s"
+  max_retries: 3
+
+# 备份配置
+backup:
+  enabled: false
+  mode: "primary"  # primary 或 backup
+  server_id: "gateway-01"
+  readonly: false
+  
+  heartbeat:
+    interval: "5s"
+    peer_addr: "localhost:9001"
+    listen_addr: ":9001" 
+    timeout: "10s"
+    
+  sync:
+    peer_addr: "localhost:9002"
+    listen_addr: ":9002"
+    batch_size: 50
+    timeout: "10s"
+    buffer_size: 1000
+
+# 过载保护配置
+overload_protection:
+  enabled: true
+  max_connections: 1000
+  connection_warning_threshold: 800
+  max_qps: 2000
+  qps_warning_threshold: 1600
+  qps_window_seconds: 10
+  max_upstream_concurrent: 100
+  upstream_timeout: "30s"
+  upstream_warning_threshold: 80

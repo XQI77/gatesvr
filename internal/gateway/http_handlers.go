@@ -284,7 +284,7 @@ func (s *Server) handleAsyncQueueStats(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		detailedStats := orderedQueue.GetDetailedQueueStats()
+		detailedStats := orderedQueue.GetQueueStats()
 
 		sessionData := map[string]interface{}{
 			"session_id":    sess.ID,
@@ -511,7 +511,7 @@ func (s *Server) getSessionsAsyncStatus() map[string]interface{} {
 
 	for _, sess := range sessions {
 		if orderedQueue := sess.GetOrderedQueue(); orderedQueue != nil {
-			stats := orderedQueue.GetDetailedQueueStats()
+			stats := orderedQueue.GetQueueStats()
 			if asyncEnabled, ok := stats["async_enabled"].(bool); ok && asyncEnabled {
 				asyncCount++
 			} else {

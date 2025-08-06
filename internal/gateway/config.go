@@ -10,11 +10,12 @@ import (
 // Config 网关服务器配置
 type Config struct {
 	// 服务地址配置
-	QUICAddr     string // QUIC监听地址
-	HTTPAddr     string // HTTP API地址
-	GRPCAddr     string // gRPC服务地址（新增）
-	MetricsAddr  string // 监控地址
-	UpstreamAddr string // 上游服务地址
+	QUICAddr         string              // QUIC监听地址
+	HTTPAddr         string              // HTTP API地址
+	GRPCAddr         string              // gRPC服务地址（新增）
+	MetricsAddr      string              // 监控地址
+	UpstreamAddr     string              // 上游服务地址（保留向后兼容）
+	UpstreamServices map[string][]string // 多上游服务配置
 
 	// TLS配置
 	TLSCertFile string // TLS证书文件

@@ -246,6 +246,7 @@ func main() {
 		GRPCAddr:                 gatewayConfig.GRPCAddr,
 		MetricsAddr:              gatewayConfig.MetricsAddr,
 		UpstreamAddr:             gatewayConfig.UpstreamAddr,
+		UpstreamServices:         gatewayConfig.UpstreamServices,
 		TLSCertFile:              gatewayConfig.TLSCertFile,
 		TLSKeyFile:               gatewayConfig.TLSKeyFile,
 		SessionTimeout:           gatewayConfig.SessionTimeout,

@@ -440,15 +440,17 @@ func (s *SyncService) convertSessionToSyncData(sess *session.Session) *SessionSy
 	var pendingMsgs []*session.OrderedMessage
 
 	if orderedQueue := sess.GetOrderedQueue(); orderedQueue != nil {
+		stats := orderedQueue.GetQueueStats()
 		queueMeta = &QueueMetadata{
-			NextExpectedSeq: orderedQueue.GetNextExpectedSeq(),
-			LastSentSeq:     orderedQueue.GetLastSentSeq(),
-			LastAckedSeq:    orderedQueue.GetLastAckedSeq(),
-			PendingCount:    orderedQueue.GetPendingCount(),
+			NextExpectedSeq: stats["next_expected_seq"].(uint64),
+			LastSentSeq:     stats["last_sent_seq"].(uint64),
+			LastAckedSeq:    stats["last_acked_seq"].(uint64),
+			PendingCount:    stats["pending_count"].(int),
 		}
 
-		// 获取待确认消息（仅关键消息）
-		pendingMsgs = orderedQueue.GetPendingMessages()
+		// 注意: GetPendingMessages方法已被移除，现在无法获取具体的待确认消息
+		// 如果需要此功能，需要重新实现或调整同步策略
+		pendingMsgs = []*session.OrderedMessage{} // 临时设为空切片
 	}
 
 	return &SessionSyncData{

@@ -19,16 +19,17 @@ type Config struct {
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	QUICAddr       string `yaml:"quic_addr"`
-	HTTPAddr       string `yaml:"http_addr"`
-	GRPCAddr       string `yaml:"grpc_addr"`
-	MetricsAddr    string `yaml:"metrics_addr"`
-	UpstreamAddr   string `yaml:"upstream_addr"`
-	CertFile       string `yaml:"cert_file"`
-	KeyFile        string `yaml:"key_file"`
-	SessionTimeout string `yaml:"session_timeout"`
-	AckTimeout     string `yaml:"ack_timeout"`
-	MaxRetries     int    `yaml:"max_retries"`
+	QUICAddr       string                    `yaml:"quic_addr"`
+	HTTPAddr       string                    `yaml:"http_addr"`
+	GRPCAddr       string                    `yaml:"grpc_addr"`
+	MetricsAddr    string                    `yaml:"metrics_addr"`
+	UpstreamAddr   string                    `yaml:"upstream_addr"`   // 保留向后兼容
+	UpstreamServices map[string][]string     `yaml:"upstream_services"` // 新的多上游配置
+	CertFile       string                    `yaml:"cert_file"`
+	KeyFile        string                    `yaml:"key_file"`
+	SessionTimeout string                    `yaml:"session_timeout"`
+	AckTimeout     string                    `yaml:"ack_timeout"`
+	MaxRetries     int                       `yaml:"max_retries"`
 }
 
 // HeartbeatConfig 心跳配置
@@ -104,17 +105,18 @@ func (c *Config) ToGatewayConfig() (*GatewayConfig, error) {
 	}
 
 	config := &GatewayConfig{
-		QUICAddr:       c.Server.QUICAddr,
-		HTTPAddr:       c.Server.HTTPAddr,
-		GRPCAddr:       c.Server.GRPCAddr,
-		MetricsAddr:    c.Server.MetricsAddr,
-		UpstreamAddr:   c.Server.UpstreamAddr,
-		TLSCertFile:    c.Server.CertFile,
-		TLSKeyFile:     c.Server.KeyFile,
-		SessionTimeout: sessionTimeout,
-		AckTimeout:     ackTimeout,
-		MaxRetries:     c.Server.MaxRetries,
-		ServerID:       c.Backup.ServerID,
+		QUICAddr:         c.Server.QUICAddr,
+		HTTPAddr:         c.Server.HTTPAddr,
+		GRPCAddr:         c.Server.GRPCAddr,
+		MetricsAddr:      c.Server.MetricsAddr,
+		UpstreamAddr:     c.Server.UpstreamAddr,
+		UpstreamServices: c.Server.UpstreamServices,
+		TLSCertFile:      c.Server.CertFile,
+		TLSKeyFile:       c.Server.KeyFile,
+		SessionTimeout:   sessionTimeout,
+		AckTimeout:       ackTimeout,
+		MaxRetries:       c.Server.MaxRetries,
+		ServerID:         c.Backup.ServerID,
 	}
 
 	// 处理备份配置
@@ -238,7 +240,8 @@ type GatewayConfig struct {
 	HTTPAddr            string
 	GRPCAddr            string
 	MetricsAddr         string
-	UpstreamAddr        string
+	UpstreamAddr        string                        // 保留向后兼容
+	UpstreamServices    map[string][]string           // 新的多上游配置
 	TLSCertFile         string
 	TLSKeyFile          string
 	SessionTimeout      time.Duration
