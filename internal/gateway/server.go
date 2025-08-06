@@ -37,6 +37,7 @@ type Server struct {
 
 	// 上游服务管理
 	upstreamServices *upstream.UpstreamServices // 多上游服务管理器
+	upstreamManager  *upstream.ServiceManager   // 上游服务连接管理器
 	upstreamClient   pb.UpstreamServiceClient   // 保留向后兼容
 	upstreamConn     *grpc.ClientConn           // 保留向后兼容
 
@@ -154,9 +155,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.running = true
 	s.runningMutex.Unlock()
 
-	// 连接上游服务
-	if err := s.connectUpstream(); err != nil {
-		return fmt.Errorf("连接上游服务失败: %w", err)
+	// 初始化上游服务连接
+	if err := s.initUpstreamConnections(); err != nil {
+		return fmt.Errorf("初始化上游服务连接失败: %w", err)
 	}
 
 	// 启动各种服务器
@@ -259,7 +260,14 @@ func (s *Server) Stop() {
 	// 停止会话管理器
 	s.sessionManager.Stop()
 
-	// 关闭上游连接
+	// 关闭上游服务连接
+	if s.upstreamManager != nil {
+		if err := s.upstreamManager.Close(); err != nil {
+			log.Printf("关闭上游服务管理器失败: %v", err)
+		}
+	}
+	
+	// 关闭向后兼容的单一上游连接
 	if s.upstreamConn != nil {
 		s.upstreamConn.Close()
 	}

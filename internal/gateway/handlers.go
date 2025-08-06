@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -80,7 +81,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 
 	// 检查是否为登录请求 - 记录状态验证时延
 	stateValidateStart := time.Now()
-	isLoginAction := s.isLoginAction(businessReq.Action)
+	isLoginAction := isHelloAction(strings.ToLower(businessReq.Action))
 
 	// 验证会话状态权限
 	if isLoginAction {
@@ -132,14 +133,20 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		defer cancel()
 	}
 
+	// 确定目标上游服务类型
+	serviceType := s.determineUpstreamService(businessReq)
+	serviceInfo := s.getUpstreamServiceInfo(serviceType)
+	
+	log.Printf("路由业务请求 - 动作: %s, 目标服务: %s", businessReq.Action, serviceInfo)
+
 	// 调用上游服务 - 记录上游调用时延
 	upstreamStart := time.Now()
-	upstreamResp, err := s.upstreamClient.ProcessRequest(upstreamCtx, upstreamReq)
+	upstreamResp, err := s.callUpstreamService(upstreamCtx, serviceType, upstreamReq)
 	upstreamLatency := time.Since(upstreamStart)
 	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
 
 	if err != nil {
-		log.Printf("调用上游服务失败: %v", err)
+		log.Printf("调用上游服务失败 - 服务: %s, 错误: %v", serviceInfo, err)
 		s.metrics.IncError("upstream_error")
 		s.sendErrorResponse(sess, req.MsgId, 500, "上游服务错误", err.Error())
 		return false
@@ -195,17 +202,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 }
 
 // isLoginAction 判断是否为登录动作
-func (s *Server) isLoginAction(action string) bool {
-	// 定义登录相关的动作列表
-	loginActions := []string{"login", "auth", "signin", "hello"}
-
-	for _, loginAction := range loginActions {
-		if action == loginAction {
-			return true
-		}
-	}
-	return false
-}
+// isLoginAction 方法已迁移到upstream_router.go中的isHelloAction函数
 
 // handleLoginSuccess 处理登录成功后的会话激活
 func (s *Server) handleLoginSuccess(sess *session.Session, upstreamResp *pb.UpstreamResponse) error {

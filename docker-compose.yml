@@ -1,0 +1,205 @@
+# gatesvr服务集群 Docker Compose 配置
+version: '3.8'
+
+services:
+  # Hello上游服务
+  hellosvr:
+    build:
+      context: .
+      dockerfile: docker/upstream/Dockerfile
+      args:
+        SERVICE_TYPE: hello
+        VERSION: ${VERSION:-latest}
+        BUILD_DATE: ${BUILD_DATE}
+        GIT_COMMIT: ${GIT_COMMIT}
+    image: hellosvr:${VERSION:-latest}
+    container_name: hellosvr
+    hostname: hellosvr
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVICE_TYPE=hello
+      - SERVICE_PORT=8081
+      - SERVICE_NAME=Hello上游服务
+    networks:
+      - gatesvr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Business上游服务
+  businesssvr:
+    build:
+      context: .
+      dockerfile: docker/upstream/Dockerfile
+      args:
+        SERVICE_TYPE: business
+        VERSION: ${VERSION:-latest}
+        BUILD_DATE: ${BUILD_DATE}
+        GIT_COMMIT: ${GIT_COMMIT}
+    image: businesssvr:${VERSION:-latest}
+    container_name: businesssvr
+    hostname: businesssvr
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVICE_TYPE=business
+      - SERVICE_PORT=8082
+      - SERVICE_NAME=Business上游服务
+    networks:
+      - gatesvr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+  # Zone上游服务
+  zonesvr:
+    build:
+      context: .
+      dockerfile: docker/upstream/Dockerfile
+      args:
+        SERVICE_TYPE: zone
+        VERSION: ${VERSION:-latest}
+        BUILD_DATE: ${BUILD_DATE}
+        GIT_COMMIT: ${GIT_COMMIT}
+    image: zonesvr:${VERSION:-latest}
+    container_name: zonesvr
+    hostname: zonesvr
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      - SERVICE_TYPE=zone
+      - SERVICE_PORT=8083
+      - SERVICE_NAME=Zone上游服务
+    networks:
+      - gatesvr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # 网关服务器
+  gatesvr:
+    build:
+      context: .
+      dockerfile: docker/gatesvr/Dockerfile
+      args:
+        VERSION: ${VERSION:-latest}
+        BUILD_DATE: ${BUILD_DATE}
+        GIT_COMMIT: ${GIT_COMMIT}
+    image: gatesvr:${VERSION:-latest}
+    container_name: gatesvr
+    hostname: gatesvr
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # QUIC端口
+      - "8090:8090"   # HTTP API端口
+      - "8092:8082"   # gRPC端口 (避免与businesssvr冲突)
+      - "9090:9090"   # Metrics端口
+    environment:
+      - CONFIG_FILE=config.yaml
+      - LOG_LEVEL=info
+      - SERVER_ID=gatesvr-docker-01
+    volumes:
+      - ./docker/config/docker-config.yaml:/app/config.yaml:ro
+      - ./certs:/app/certs:ro
+      - gatesvr-logs:/app/logs
+    depends_on:
+      hellosvr:
+        condition: service_healthy
+      businesssvr:
+        condition: service_healthy
+      zonesvr:
+        condition: service_healthy
+    networks:
+      - gatesvr-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# 网络配置
+networks:
+  gatesvr-network:
+    name: gatesvr-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    driver_opts:
+      com.docker.network.bridge.name: gatesvr0
+
+# 数据卷配置
+volumes:
+  gatesvr-logs:
+    name: gatesvr-logs
+    driver: local
+  gatesvr-data:
+    name: gatesvr-data
+    driver: local

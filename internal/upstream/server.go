@@ -57,7 +57,7 @@ func NewServer(addr string) *Server {
 	return &Server{
 		addr:          addr,
 		startTime:     time.Now(),
-		unicastClient: NewUnicastClient("localhost:8082"), // 网关gRPC地址
+		unicastClient: NewUnicastClient("localhost:8092"), // 网关gRPC地址
 		loggedInUsers: make(map[string]*UserSession),
 		stopCh:        make(chan struct{}),
 	}

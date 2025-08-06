@@ -1,0 +1,39 @@
+# gatesvr Docker容器配置文件
+server:
+  quic_addr: ":8080"          # QUIC监听地址
+  http_addr: ":8090"          # HTTP API地址  
+  grpc_addr: ":8092"          # gRPC服务地址
+  metrics_addr: ":9090"       # 监控地址
+  
+  # 容器内服务发现 - 使用容器名作为主机名
+  upstream_services:
+    hello:                    # Hello服务（登录、认证相关）
+      - "hellosvr:8081"       # 容器名:端口
+    business:                 # Business服务（业务逻辑处理）
+      - "businesssvr:8082"    # 容器名:端口
+    zone:                     # Zone服务（区域功能、特殊服务）
+      - "zonesvr:8083"        # 容器名:端口
+  
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+  session_timeout: "5m"
+  ack_timeout: "30s"
+  max_retries: 3
+
+# 备份配置 - 容器环境暂时禁用
+backup:
+  enabled: false
+  mode: "primary"
+  server_id: "gatesvr-docker-01"
+
+# 过载保护配置 - 针对容器环境调优
+overload_protection:
+  enabled: true
+  max_connections: 1000              # 最大连接数
+  connection_warning_threshold: 800   # 连接预警阈值
+  max_qps: 2000                      # 最大QPS
+  qps_warning_threshold: 1600        # QPS预警阈值
+  qps_window_seconds: 10             # QPS统计窗口
+  max_upstream_concurrent: 100       # 最大上游并发
+  upstream_timeout: "30s"            # 上游超时
+  upstream_warning_threshold: 80     # 上游并发预警阈值

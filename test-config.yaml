@@ -1,7 +1,7 @@
 server:
   quic_addr: ":8080"
   http_addr: ":8090" 
-  grpc_addr: ":8082"
+  grpc_addr: ":8092"          # 修改为8092避免与business上游服务(8082)冲突
   metrics_addr: ":9090"
   
   # 多上游服务配置 - 测试用

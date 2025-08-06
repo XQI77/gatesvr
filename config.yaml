@@ -3,7 +3,7 @@ server:
   # 服务器地址配置
   quic_addr: ":8443"         # QUIC监听地址
   http_addr: ":8080"         # HTTP API监听地址
-  grpc_addr: ":8082"         # gRPC服务监听地址
+  grpc_addr: ":8092"         # gRPC服务监听地址
   metrics_addr: ":9090"      # 监控指标监听地址
   upstream_addr: "localhost:9000"  # 上游gRPC服务地址
 
