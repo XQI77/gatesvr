@@ -102,13 +102,12 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	}
 
 	// 从第一个消息中提取身份标识信息
-	var openID, accessToken, clientID string
+	var openID, clientID string
 	if firstClientReq.Type == pb.RequestType_REQUEST_START {
 		// 解析START请求以获取身份信息
 		startReq := &pb.StartRequest{}
 		if err := proto.Unmarshal(firstClientReq.Payload, startReq); err == nil {
 			openID = startReq.Openid
-			accessToken = startReq.AuthToken
 			clientID = startReq.ClientId
 		}
 	} else if firstClientReq.Type == pb.RequestType_REQUEST_BUSINESS {
@@ -119,9 +118,6 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 			if params := businessReq.Params; params != nil {
 				if uid, exists := params["Openid"]; exists {
 					openID = uid
-				}
-				if token, exists := params["accessToken"]; exists {
-					accessToken = token
 				}
 				if cid, exists := params["clientId"]; exists {
 					clientID = cid
@@ -140,7 +136,7 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	log.Printf("从第一个消息中提取身份信息 - OpenID: %s, ClientID: %s", openID, clientID)
 
 	// 现在使用提取到的身份信息创建或重连会话
-	session, isReconnect := s.sessionManager.CreateOrReconnectSession(conn, stream, clientID, openID, accessToken, userIP)
+	session, isReconnect := s.sessionManager.CreateOrReconnectSession(conn, stream, clientID, openID, userIP)
 	log.Printf("根据第一个消息提取出session - sessionid: %s", session.ID)
 	if isReconnect {
 		log.Printf("检测到重连 - 会话: %s, 客户端: %s, 用户: %s", session.ID, clientID, openID)

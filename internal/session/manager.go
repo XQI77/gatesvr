@@ -13,8 +13,8 @@ import (
 
 // Manager 会话管理器
 type Manager struct {
-	sessions      sync.Map // map[string]*Session - 所有活跃会话（按sessionID索引）
-	sessionsByGID sync.Map // map[int64]*Session - 按GID索引的会话
+	sessions sync.Map // map[string]*Session - 所有活跃会话（按sessionID索引）
+	//sessionsByGID sync.Map // map[int64]*Session - 按GID索引的会话
 	sessionsByUID sync.Map // map[string]*Session - 按用户ID索引的会话（支持重连检测）
 
 	// 超时配置
@@ -47,7 +47,7 @@ func NewManager(sessionTimeout, ackTimeout time.Duration, maxRetries int) *Manag
 }
 
 // CreateOrReconnectSession 创建或重连会话
-func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream, clientID, openID, accessToken, userIP string) (*Session, bool) {
+func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream, clientID, openID, userIP string) (*Session, bool) {
 	// 阶段1：无锁检查重连（超高并发性能）
 	var oldSession *Session
 	var isReconnect bool
@@ -74,11 +74,10 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 		LastActivity: time.Now(),
 
 		// 客户端信息
-		ClientID:    clientID,
-		OpenID:      openID,
-		AccessToken: accessToken,
-		UserIP:      userIP,
-		connIdx:     1, // 正常连接
+		ClientID: clientID,
+		OpenID:   openID,
+		UserIP:   userIP,
+		connIdx:  1, // 正常连接
 
 		// 初始状态
 		nextSeqID: 1,
@@ -123,18 +122,6 @@ func (m *Manager) CreateOrReconnectSession(conn *quic.Conn, stream *quic.Stream,
 		m.sessionsByUID.Store(openID, newSession)
 	}
 
-	// 阶段4：锁外异步操作（不阻塞其他连接）
-	// 启动会话清理协程
-	m.wg.Add(1)
-	go m.sessionCleanupRoutine(newSession)
-
-	// 触发同步回调
-	if isReconnect {
-		m.triggerSyncCallback(sessionID, newSession, "session_reconnected")
-	} else {
-		m.triggerSyncCallback(sessionID, newSession, "session_created")
-	}
-
 	return newSession, isReconnect
 }
 
@@ -143,24 +130,8 @@ func (m *Manager) handleOldSessionOnReconnectAtomic(oldSession, newSession *Sess
 	// 标记旧会话为关闭但不立即删除
 	oldSession.SetClosed()
 
-	// 先保存旧会话的GID，避免后续访问问题
-	oldGid := oldSession.Gid()
-
-	// 检查GID继承情况，决定是否需要保留GID索引
-	shouldPreserveGID := (newSession.Gid() == oldGid && oldGid != 0)
-
 	// 从主索引中原子移除旧会话
 	m.sessions.Delete(oldSession.ID)
-
-	// 从GID索引中原子移除旧会话（但要考虑继承情况）
-	if oldGid != 0 && !shouldPreserveGID {
-		// 只有在新会话不继承GID时才删除GID索引
-		m.sessionsByGID.Delete(oldGid)
-	} else if shouldPreserveGID {
-		// 如果新会话继承GID，重置旧会话的GID防止清理时冲突
-		oldSession.SetGid(0)
-		// GID索引将指向新会话，不删除
-	}
 
 	// 延迟清理旧会话
 	go func() {
@@ -216,11 +187,6 @@ func (m *Manager) Stop() {
 	close(m.stopCh)
 	m.wg.Wait()
 
-	// 停止消息缓存管理器（已废弃）
-	// if m.messageCache != nil {
-	//     m.messageCache.Stop()
-	// }
-
 	// 关闭所有会话
 	m.sessions.Range(func(key, value interface{}) bool {
 		if session := value.(*Session); session != nil {
@@ -237,30 +203,6 @@ func (m *Manager) Stop() {
 		m.sessionsByUID.Delete(key)
 		return true
 	})
-	m.sessionsByGID.Range(func(key, value interface{}) bool {
-		m.sessionsByGID.Delete(key)
-		return true
-	})
-}
-
-// sessionCleanupRoutine 会话清理协程，处理ACK超时
-func (m *Manager) sessionCleanupRoutine(session *Session) {
-	defer m.wg.Done()
-
-	ticker := time.NewTicker(time.Second) // 每秒检查一次
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-session.closeCh:
-			return
-		case <-m.stopCh:
-			return
-		case <-ticker.C:
-			// 检查待确认消息是否超时
-			m.checkAckTimeouts(session)
-		}
-	}
 }
 
 // cleanupExpiredSessions 清理过期会话
@@ -279,21 +221,6 @@ func (m *Manager) cleanupExpiredSessions(ctx context.Context) {
 		case <-ticker.C:
 			m.removeExpiredSessions()
 		}
-	}
-}
-
-// checkAckTimeouts 检查ACK超时（现在由OrderedMessageQueue自动处理）
-func (m *Manager) checkAckTimeouts(session *Session) {
-	// ACK超时检查和重试现在由OrderedMessageQueue的cleanupLoop自动处理
-	// 这里只需要检查会话是否正常
-	if session.IsClosed() {
-		return
-	}
-
-	// 可以添加一些会话级别的健康检查
-	orderedQueue := session.GetOrderedQueue()
-	if orderedQueue != nil && orderedQueue.IsStopped() {
-		fmt.Printf("会话 %s 的有序队列已停止\n", session.ID)
 	}
 }
 
@@ -322,27 +249,6 @@ func (m *Manager) removeExpiredSessions() {
 	}
 }
 
-// AddPendingMessage 添加待确认消息到缓存（已由OrderedMessageQueue管理）
-func (m *Manager) AddPendingMessage(sessionID string, seqID uint64, data []byte) {
-	// 消息已在OrderedMessageQueue中管理，不需要单独添加
-	// m.messageCache.AddMessage(sessionID, seqID, data)
-}
-
-// AckMessage 确认消息（从缓存中移除）
-func (m *Manager) AckMessage(sessionID string, seqID uint64) bool {
-	session, exists := m.GetSession(sessionID)
-	if !exists {
-		return false
-	}
-
-	orderedQueue := session.GetOrderedQueue()
-	if orderedQueue == nil {
-		return false
-	}
-
-	return orderedQueue.AckMessage(seqID)
-}
-
 // AckMessagesUpTo 确认到指定序列号为止的所有消息（批量ACK）
 func (m *Manager) AckMessagesUpTo(sessionID string, ackSeqID uint64) int {
 	session, exists := m.GetSession(sessionID)
@@ -363,7 +269,7 @@ func (m *Manager) AckMessagesUpTo(sessionID string, ackSeqID uint64) int {
 }
 
 // ActivateSession 激活会话（处理登录成功后的会话激活）
-func (m *Manager) ActivateSession(sessionID string, gid int64, zone int64) error {
+func (m *Manager) ActivateSession(sessionID string, zone int64) error {
 	value, exists := m.sessions.Load(sessionID)
 	if !exists {
 		return fmt.Errorf("会话不存在: %s", sessionID)
@@ -372,27 +278,11 @@ func (m *Manager) ActivateSession(sessionID string, gid int64, zone int64) error
 	session := value.(*Session)
 
 	// 激活会话状态
-	if !session.ActivateSession(gid, zone) {
+	if !session.ActivateSession(zone) {
 		return fmt.Errorf("会话激活失败，当前状态不是Inited: %s", sessionID)
 	}
 
-	// 绑定到GID索引
-	if gid != 0 {
-		// 检查GID是否已被占用
-		if existingValue, exists := m.sessionsByGID.Load(gid); exists {
-			existingSession := existingValue.(*Session)
-			if existingSession.ID != session.ID {
-				// 如果有旧会话占用相同GID，移除旧会话
-				m.immediateRemoveSession(existingSession.ID)
-			}
-		}
-		m.sessionsByGID.Store(gid, session)
-	}
-
-	// 触发同步回调
-	m.triggerSyncCallback(sessionID, session, "session_activated")
-
-	fmt.Printf("会话激活成功 - 会话: %s, GID: %d, Zone: %d\n", sessionID, gid, zone)
+	fmt.Printf("会话激活成功 - 会话: %s, Zone: %d\n", sessionID, zone)
 	return nil
 }
 
@@ -493,7 +383,6 @@ func (m *Manager) GetSessionStats(sessionID string) map[string]interface{} {
 	stats := map[string]interface{}{
 		"session_id":            session.ID,
 		"state":                 session.State(),
-		"gid":                   session.Gid(),
 		"zone":                  session.Zone(),
 		"openid":                session.OpenID,
 		"client_id":             session.ClientID,
@@ -525,20 +414,6 @@ func (m *Manager) GetPendingCount(sessionID string) int {
 	return orderedQueue.GetPendingCount()
 }
 
-// GetTotalCacheMemUsed 获取缓存使用的总内存（已废弃）
-func (m *Manager) GetTotalCacheMemUsed() int64 {
-	// 现在由各个会话的OrderedMessageQueue管理内存，返回0
-	return 0
-}
-
-// GetSessionByGID 根据GID获取会话
-func (m *Manager) GetSessionByGID(gid int64) (*Session, bool) {
-	if value, ok := m.sessionsByGID.Load(gid); ok {
-		return value.(*Session), true
-	}
-	return nil, false
-}
-
 // GetSessionByOpenID 根据OpenID获取会话
 func (m *Manager) GetSessionByOpenID(openID string) (*Session, bool) {
 	if value, ok := m.sessionsByUID.Load(openID); ok {
@@ -562,28 +437,11 @@ func (m *Manager) BindSession(session *Session) error {
 		m.sessionsByUID.Store(session.OpenID, session)
 	}
 
-	// 绑定到GID索引（如果有GID的话）
-	if gid := session.Gid(); gid != 0 {
-		// 检查GID是否已被占用
-		if existingValue, exists := m.sessionsByGID.Load(gid); exists {
-			existingSession := existingValue.(*Session)
-			if existingSession.ID != session.ID {
-				return fmt.Errorf("GID %d 已被会话 %s 占用", gid, existingSession.ID)
-			}
-		}
-		// 绑定到GID索引
-		m.sessionsByGID.Store(gid, session)
-	}
-
 	return nil
 }
 
 // UnbindSession 解绑会话（登出或断开时调用）
 func (m *Manager) UnbindSession(session *Session) {
-	// 从GID索引中移除
-	if gid := session.Gid(); gid != 0 {
-		m.sessionsByGID.Delete(gid)
-	}
 
 	// 从OpenID索引中移除
 	if session.OpenID != "" {
@@ -608,7 +466,7 @@ func (m *Manager) RemoveSessionWithDelay(sessionID string, delay bool, reason st
 		return
 	}
 
-	if delay && session.Gid() != 0 {
+	if delay && session.OpenID != "" {
 		// 延迟清理，支持重连
 		fmt.Printf("会话 %s 将在 %v 后清理，原因: %s\n", sessionID, m.connectionDownDelay, reason)
 
@@ -634,19 +492,10 @@ func (m *Manager) immediateRemoveSession(sessionID string) {
 	// 从所有索引中原子移除
 	m.sessions.Delete(sessionID)
 
-	// 从其他索引中移除
-	if gid := session.Gid(); gid != 0 {
-		m.sessionsByGID.Delete(gid)
-	}
 	if session.OpenID != "" {
 		m.sessionsByUID.Delete(session.OpenID)
 	}
 
-	// 触发同步回调
-	m.triggerSyncCallback(sessionID, session, "session_deleted")
-
-	// 清理该会话的所有缓存消息（现在由OrderedMessageQueue处理）
-	// m.messageCache.RemoveSession(sessionID)
 	session.Close()
 	fmt.Printf("会话 %s 已被彻底清理\n", sessionID)
 }
@@ -670,16 +519,6 @@ func (m *Manager) PushToSession(sessionID string, msgType string, data []byte) e
 	return nil
 }
 
-// PushToGID 根据GID单播推送消息
-func (m *Manager) PushToGID(gid int64, msgType string, data []byte) error {
-	session, exists := m.GetSessionByGID(gid)
-	if !exists {
-		return fmt.Errorf("GID对应的会话不存在: %d", gid)
-	}
-
-	return m.PushToSession(session.ID, msgType, data)
-}
-
 // PushToOpenID 根据OpenID单播推送消息
 func (m *Manager) PushToOpenID(openID string, msgType string, data []byte) error {
 	session, exists := m.GetSessionByOpenID(openID)
@@ -688,18 +527,6 @@ func (m *Manager) PushToOpenID(openID string, msgType string, data []byte) error
 	}
 
 	return m.PushToSession(session.ID, msgType, data)
-}
-
-// GetSessionsByGIDs 根据GID列表获取会话列表
-func (m *Manager) GetSessionsByGIDs(gids []int64) []*Session {
-	sessions := make([]*Session, 0, len(gids))
-	for _, gid := range gids {
-		if value, exists := m.sessionsByGID.Load(gid); exists {
-			session := value.(*Session)
-			sessions = append(sessions, session)
-		}
-	}
-	return sessions
 }
 
 // GetOnlineUserCount 获取在线用户数量
@@ -750,29 +577,6 @@ func (m *Manager) IsBackupMode() bool {
 	return m.backupMode
 }
 
-// triggerSyncCallback 触发同步回调
-func (m *Manager) triggerSyncCallback(sessionID string, session *Session, event string) {
-	if !m.syncEnabled {
-		return
-	}
-
-	m.syncCallbackMux.RLock()
-	callback := m.syncCallback
-	m.syncCallbackMux.RUnlock()
-
-	if callback != nil {
-		// 异步调用回调，避免阻塞主流程
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("同步回调执行异常: %v\n", r)
-				}
-			}()
-			callback(sessionID, session, event)
-		}()
-	}
-}
-
 // RestoreSession 从同步数据恢复会话（备份模式专用）
 func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 	if !m.backupMode {
@@ -802,9 +606,6 @@ func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 	if clientID, ok := sessionData["client_id"].(string); ok {
 		restoredSession.ClientID = clientID
 	}
-	if accessToken, ok := sessionData["access_token"].(string); ok {
-		restoredSession.AccessToken = accessToken
-	}
 	if userIP, ok := sessionData["user_ip"].(string); ok {
 		restoredSession.UserIP = userIP
 	}
@@ -812,9 +613,6 @@ func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 	// 恢复状态信息
 	if state, ok := sessionData["state"].(float64); ok {
 		restoredSession.state = int32(state)
-	}
-	if gid, ok := sessionData["gid"].(float64); ok {
-		restoredSession.gid = int64(gid)
 	}
 	if zone, ok := sessionData["zone"].(float64); ok {
 		restoredSession.zone = int64(zone)
@@ -833,12 +631,9 @@ func (m *Manager) RestoreSession(sessionData map[string]interface{}) error {
 	if restoredSession.OpenID != "" {
 		m.sessionsByUID.Store(restoredSession.OpenID, restoredSession)
 	}
-	if restoredSession.gid != 0 {
-		m.sessionsByGID.Store(restoredSession.gid, restoredSession)
-	}
 
-	fmt.Printf("恢复会话成功 - 会话: %s, OpenID: %s, GID: %d\n",
-		sessionID, restoredSession.OpenID, restoredSession.gid)
+	fmt.Printf("恢复会话成功 - 会话: %s, OpenID: %s",
+		sessionID, restoredSession.OpenID)
 
 	return nil
 }
@@ -854,10 +649,8 @@ func (m *Manager) GetSessionSyncData(sessionID string) (map[string]interface{}, 
 		"session_id":     session.ID,
 		"open_id":        session.OpenID,
 		"client_id":      session.ClientID,
-		"access_token":   session.AccessToken,
 		"user_ip":        session.UserIP,
 		"state":          session.State(),
-		"gid":            session.Gid(),
 		"zone":           session.Zone(),
 		"server_seq":     session.ServerSeq(),
 		"max_client_seq": session.MaxClientSeq(),
@@ -876,12 +669,6 @@ func (m *Manager) ValidateSessionData() map[string]interface{} {
 	// 统计总会话数
 	m.sessions.Range(func(key, value interface{}) bool {
 		totalSessions++
-		return true
-	})
-
-	// 统计GID索引数
-	m.sessionsByGID.Range(func(key, value interface{}) bool {
-		gidIndexed++
 		return true
 	})
 
@@ -930,14 +717,6 @@ func (m *Manager) ValidateSessionData() map[string]interface{} {
 				inconsistencies = append(inconsistencies, fmt.Sprintf("UID索引不一致: %s", sessionID))
 			} else if indexedSession := indexedValue.(*Session); indexedSession.ID != sessionID {
 				inconsistencies = append(inconsistencies, fmt.Sprintf("UID索引不一致: %s", sessionID))
-			}
-		}
-
-		if session.Gid() != 0 {
-			if indexedValue, exists := m.sessionsByGID.Load(session.Gid()); !exists {
-				inconsistencies = append(inconsistencies, fmt.Sprintf("GID索引不一致: %s", sessionID))
-			} else if indexedSession := indexedValue.(*Session); indexedSession.ID != sessionID {
-				inconsistencies = append(inconsistencies, fmt.Sprintf("GID索引不一致: %s", sessionID))
 			}
 		}
 		return true

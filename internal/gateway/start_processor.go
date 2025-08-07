@@ -265,7 +265,6 @@ func (p *StartMessageProcessor) handleStartMessage(sess *session.Session, req *p
 	// 更新session的客户端信息
 	sess.OpenID = startReq.Openid
 	sess.ClientID = req.Openid // 从请求头中获取openid作为备份
-	sess.AccessToken = startReq.AuthToken
 
 	// 基础认证验证（可选）
 	if startReq.AuthToken != "" {

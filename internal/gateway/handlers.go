@@ -136,7 +136,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	// 确定目标上游服务类型
 	serviceType := s.determineUpstreamService(businessReq)
 	serviceInfo := s.getUpstreamServiceInfo(serviceType)
-	
+
 	log.Printf("路由业务请求 - 动作: %s, 目标服务: %s", businessReq.Action, serviceInfo)
 
 	// 调用上游服务 - 记录上游调用时延
@@ -201,21 +201,11 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	return true
 }
 
-// isLoginAction 判断是否为登录动作
-// isLoginAction 方法已迁移到upstream_router.go中的isHelloAction函数
-
 // handleLoginSuccess 处理登录成功后的会话激活
 func (s *Server) handleLoginSuccess(sess *session.Session, upstreamResp *pb.UpstreamResponse) error {
 	// 从响应头中获取GID和Zone信息
-	var gid, zone int64
+	var zone int64
 	var err error
-
-	if gidStr, exists := upstreamResp.Headers["gid"]; exists && gidStr != "" {
-		gid, err = strconv.ParseInt(gidStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("解析GID失败: %v", err)
-		}
-	}
 
 	if zoneStr, exists := upstreamResp.Headers["zone"]; exists && zoneStr != "" {
 		zone, err = strconv.ParseInt(zoneStr, 10, 64)
@@ -224,15 +214,8 @@ func (s *Server) handleLoginSuccess(sess *session.Session, upstreamResp *pb.Upst
 		}
 	}
 
-	// 如果没有GID，使用默认值或生成一个
-	if gid == 0 {
-		// 这里可以根据业务逻辑生成GID，暂时使用会话ID的哈希值
-		gid = int64(hash(sess.ID))%1000000 + 1000000
-		log.Printf("未提供GID，使用生成的GID: %d", gid)
-	}
-
 	// 激活会话
-	if err := s.sessionManager.ActivateSession(sess.ID, gid, zone); err != nil {
+	if err := s.sessionManager.ActivateSession(sess.ID, zone); err != nil {
 		return fmt.Errorf("激活会话失败: %v", err)
 	}
 
@@ -242,7 +225,7 @@ func (s *Server) handleLoginSuccess(sess *session.Session, upstreamResp *pb.Upst
 		// 不返回错误，因为登录已经成功
 	}
 
-	log.Printf("登录成功，会话已激活 - 会话: %s, GID: %d, Zone: %d", sess.ID, gid, zone)
+	log.Printf("登录成功，会话已激活 - 会话: %s, Zone: %d", sess.ID, zone)
 	return nil
 }
 
@@ -384,7 +367,6 @@ func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) b
 	// 更新session的客户端信息
 	sess.OpenID = startReq.Openid
 	sess.ClientID = req.Openid // 从请求头中获取openid作为备份
-	sess.AccessToken = startReq.AuthToken
 
 	// 基础认证验证（可选）
 	if startReq.AuthToken != "" {

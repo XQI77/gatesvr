@@ -22,9 +22,9 @@ type OrderedMessage struct {
 // MessageQueue 消息优先队列（基于heap实现的最小堆）
 type MessageQueue []*OrderedMessage
 
-func (mq MessageQueue) Len() int { return len(mq) }
-func (mq MessageQueue) Less(i, j int) bool { return mq[i].ServerSeq < mq[j].ServerSeq }
-func (mq MessageQueue) Swap(i, j int) { mq[i], mq[j] = mq[j], mq[i] }
+func (mq MessageQueue) Len() int            { return len(mq) }
+func (mq MessageQueue) Less(i, j int) bool  { return mq[i].ServerSeq < mq[j].ServerSeq }
+func (mq MessageQueue) Swap(i, j int)       { mq[i], mq[j] = mq[j], mq[i] }
 func (mq *MessageQueue) Push(x interface{}) { *mq = append(*mq, x.(*OrderedMessage)) }
 func (mq *MessageQueue) Pop() interface{} {
 	old := *mq
@@ -40,14 +40,13 @@ const (
 	CleanupInterval = 10 * time.Second // 清理间隔
 )
 
-
 // OrderedMessageQueue 有序消息队列管理器
 type OrderedMessageQueue struct {
 	sessionID string
 
 	// 消息队列和控制
 	waitingQueue MessageQueue               // 等待发送的消息队列（有序）
-	sentMessages map[uint64]*OrderedMessage // 已发送待确认的消息
+	sentMessages map[uint64]*OrderedMessage // 已发送待确认的消息（有问题可能todo改）
 	queueMux     sync.Mutex                 // 保护队列的锁
 
 	// 序列号管理
@@ -100,7 +99,6 @@ func (omq *OrderedMessageQueue) GetSendCallback() func(*OrderedMessage) error {
 	return omq.sendCallback
 }
 
-
 // EnqueueMessage 将消息加入队列
 func (omq *OrderedMessageQueue) EnqueueMessage(serverSeq uint64, push *pb.ServerPush, data []byte) error {
 	omq.queueMux.Lock()
@@ -150,7 +148,6 @@ func (omq *OrderedMessageQueue) EnqueueMessage(serverSeq uint64, push *pb.Server
 
 	return nil
 }
-
 
 // processWaitingMessages 处理等待队列中的消息
 func (omq *OrderedMessageQueue) processWaitingMessages() {
@@ -229,22 +226,6 @@ func (omq *OrderedMessageQueue) ResyncSequence(clientAckSeq uint64) {
 	}
 }
 
-
-// AckMessage 确认消息
-func (omq *OrderedMessageQueue) AckMessage(seqID uint64) bool {
-	omq.queueMux.Lock()
-	defer omq.queueMux.Unlock()
-
-	if _, exists := omq.sentMessages[seqID]; exists {
-		delete(omq.sentMessages, seqID)
-		if seqID > omq.lastAckedSeq {
-			omq.lastAckedSeq = seqID
-		}
-		return true
-	}
-	return false
-}
-
 // AckMessagesUpTo 批量确认消息
 func (omq *OrderedMessageQueue) AckMessagesUpTo(ackSeqID uint64) int {
 	omq.queueMux.Lock()
@@ -264,7 +245,6 @@ func (omq *OrderedMessageQueue) AckMessagesUpTo(ackSeqID uint64) int {
 
 	return ackedCount
 }
-
 
 // GetPendingCount 获取待确认消息数量
 func (omq *OrderedMessageQueue) GetPendingCount() int {
@@ -346,13 +326,9 @@ func (omq *OrderedMessageQueue) Stop() {
 	}
 }
 
-
 // IsStopped 检查队列是否已停止
 func (omq *OrderedMessageQueue) IsStopped() bool {
 	omq.queueMux.Lock()
 	defer omq.queueMux.Unlock()
 	return omq.stopped
 }
-
-
-

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"gatesvr/internal/session"
@@ -22,12 +21,6 @@ func (s *Server) PushToClient(ctx context.Context, req *pb.UnicastPushRequest) (
 	switch req.TargetType {
 	case "session":
 		err = s.handleUnicastToSessionWithOrdering(req)
-	case "gid":
-		if gid, parseErr := strconv.ParseInt(req.TargetId, 10, 64); parseErr == nil {
-			err = s.handleUnicastToGIDWithOrdering(gid, req)
-		} else {
-			err = fmt.Errorf("无效的GID: %s", req.TargetId)
-		}
 	case "openid":
 		err = s.handleUnicastToOpenIDWithOrdering(req)
 	default:
@@ -119,24 +112,6 @@ func (s *Server) handleUnicastToSessionWithOrdering(req *pb.UnicastPushRequest) 
 	if !session.IsNormal() {
 		// 会话未激活，缓存消息（保持原有逻辑）
 		return s.cacheMessageForSession(req.TargetId, req.MsgType, req.Title, req.Content, req.Data)
-	}
-
-	// 会话已激活，根据SyncHint处理消息
-	return s.processNotifyMessage(session, req)
-}
-
-// handleUnicastToGIDWithOrdering 使用消息保序机制处理到GID的单播推送
-func (s *Server) handleUnicastToGIDWithOrdering(gid int64, req *pb.UnicastPushRequest) error {
-	session, exists := s.sessionManager.GetSessionByGID(gid)
-	if !exists {
-		// GID对应的会话不存在，可能用户未登录，缓存消息
-		return s.cacheMessageForGID(gid, req.MsgType, req.Title, req.Content, req.Data)
-	}
-
-	// 检查会话状态
-	if !session.IsNormal() {
-		// 会话未激活，缓存消息
-		return s.cacheMessageForSession(session.ID, req.MsgType, req.Title, req.Content, req.Data)
 	}
 
 	// 会话已激活，根据SyncHint处理消息

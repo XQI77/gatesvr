@@ -33,7 +33,7 @@ type Server struct {
 	metrics            *metrics.GateServerMetrics // 监控指标
 	performanceTracker *PerformanceTracker        // 性能追踪器
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
-	startProcessor     *StartMessageProcessor     // START消息异步处理器
+	startProcessor     *StartMessageProcessor     // START消息异步处理器（todo不需要这个）
 
 	// 上游服务管理
 	upstreamServices *upstream.UpstreamServices // 多上游服务管理器
@@ -76,14 +76,14 @@ func NewServer(config *Config) *Server {
 
 	// 初始化多上游服务配置
 	server.initUpstreamServices()
-	
+
 	// 初始化有序消息发送器
 	server.orderedSender = NewOrderedMessageSender(server)
-	
+
 	// 初始化START消息异步处理器
 	if config.StartProcessorConfig != nil && config.StartProcessorConfig.Enabled {
 		server.startProcessor = NewStartMessageProcessor(
-			server, 
+			server,
 			config.StartProcessorConfig.MaxWorkers,
 			config.StartProcessorConfig.QueueSize,
 			config.StartProcessorConfig.Timeout,
@@ -107,10 +107,10 @@ func NewServer(config *Config) *Server {
 	if config.BackupConfig != nil && config.BackupConfig.Sync.Enabled {
 		server.backupManager = backup.NewBackupManager(config.BackupConfig, config.ServerID)
 		server.backupManager.RegisterSessionManager(server.sessionManager)
-		
+
 		// 设置会话管理器的同步回调
 		server.sessionManager.EnableSync(server.onSessionSync)
-		
+
 		log.Printf("备份管理器已初始化 - 服务器ID: %s, 模式: %d", config.ServerID, config.BackupConfig.Sync.Mode)
 	}
 
@@ -136,14 +136,14 @@ func (s *Server) initUpstreamServices() {
 	} else {
 		// 使用默认配置
 		s.upstreamServices.AddService(upstream.ServiceTypeHello, []string{"localhost:8081"})
-		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{"localhost:8082"}) 
+		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{"localhost:8082"})
 		s.upstreamServices.AddService(upstream.ServiceTypeZone, []string{"localhost:8083"})
 		log.Printf("使用默认上游服务配置")
 	}
 
 	// 输出配置摘要
 	stats := s.upstreamServices.GetStats()
-	log.Printf("上游服务初始化完成 - 总服务数: %d, 已启用: %d", 
+	log.Printf("上游服务初始化完成 - 总服务数: %d, 已启用: %d",
 		stats["total_services"], stats["enabled_services"])
 }
 
@@ -266,7 +266,7 @@ func (s *Server) Stop() {
 			log.Printf("关闭上游服务管理器失败: %v", err)
 		}
 	}
-	
+
 	// 关闭向后兼容的单一上游连接
 	if s.upstreamConn != nil {
 		s.upstreamConn.Close()
@@ -291,11 +291,11 @@ func (s *Server) onSessionSync(sessionID string, session *session.Session, event
 		log.Printf("同步会话事件: %s - 会话: %s", event, sessionID)
 		// 这里可以调用备份管理器的同步方法
 		// 由于BackupManager接口没有直接的同步方法，这里暂时记录日志
-		
+
 	case "session_deleted":
 		// 同步会话删除
 		log.Printf("同步会话删除: %s", sessionID)
-		
+
 	default:
 		log.Printf("未知会话同步事件: %s - 会话: %s", event, sessionID)
 	}
@@ -308,7 +308,7 @@ func (s *Server) GetBackupStats() map[string]interface{} {
 			"backup_enabled": false,
 		}
 	}
-	
+
 	stats := s.backupManager.GetStats()
 	stats["backup_enabled"] = true
 	return stats
@@ -319,7 +319,7 @@ func (s *Server) SwitchBackupMode(mode backup.ServerMode) error {
 	if s.backupManager == nil {
 		return fmt.Errorf("备份功能未启用")
 	}
-	
+
 	return s.backupManager.SwitchMode(mode)
 }
 
@@ -328,7 +328,7 @@ func (s *Server) TriggerBackupSync() error {
 	if s.backupManager == nil {
 		return fmt.Errorf("备份功能未启用")
 	}
-	
+
 	return s.backupManager.TriggerSync()
 }
 
@@ -337,6 +337,6 @@ func (s *Server) TriggerFailover() error {
 	if s.backupManager == nil {
 		return fmt.Errorf("备份功能未启用")
 	}
-	
+
 	return s.backupManager.TriggerFailover()
 }
