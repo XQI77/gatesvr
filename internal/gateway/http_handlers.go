@@ -49,54 +49,6 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handlePerformance 处理性能监控请求
-func (s *Server) handlePerformance(w http.ResponseWriter, r *http.Request) {
-	stats := s.performanceTracker.GetStats()
-
-	// 添加START处理器统计信息
-	if s.startProcessor != nil {
-		stats["start_processor"] = s.startProcessor.GetStats()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
-// handleQueueStatus 处理队列状态查询
-func (s *Server) handleQueueStatus(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
-
-	if sessionID == "" {
-		// 返回所有会话的队列状态
-		sessions := s.sessionManager.GetAllSessions()
-		queueStats := make(map[string]interface{})
-
-		for _, sess := range sessions {
-			if stats := s.orderedSender.GetQueueStats(sess); stats != nil {
-				queueStats[sess.ID] = stats
-			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"queue_stats": queueStats,
-			"timestamp":   time.Now().Unix(),
-		})
-		return
-	}
-
-	// 返回指定会话的队列状态
-	sess, exists := s.sessionManager.GetSession(sessionID)
-	if !exists {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	stats := s.orderedSender.GetQueueStats(sess)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
 /*
 // handleDetailedLatency 处理详细时延查询请求 - 新增
 func (s *Server) handleDetailedLatency(w http.ResponseWriter, r *http.Request) {
@@ -591,49 +543,6 @@ func (s *Server) handleClientLatency(w http.ResponseWriter, r *http.Request) {
 			"description": "客户端到网关的往返时延统计",
 			"note":        "此信息需要从客户端获取，当前显示服务端处理时延",
 			//"server_side_latency": s.performanceTracker.detailedLatencyTracker.GetDetailedStats()["total_latency"],
-		},
-		"timestamp": time.Now().Unix(),
-	}
-
-	json.NewEncoder(w).Encode(response)
-}
-
-// handleStartProcessor 处理START消息处理器统计查询
-func (s *Server) handleStartProcessor(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if s.startProcessor == nil {
-		response := map[string]interface{}{
-			"error":       "START异步处理器未启用",
-			"description": "系统使用同步处理模式",
-			"timestamp":   time.Now().Unix(),
-		}
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-
-	stats := s.startProcessor.GetStats()
-
-	// 添加详细描述信息
-	response := map[string]interface{}{
-		"start_processor_stats": stats,
-		"description": map[string]string{
-			"max_workers":         "最大工作线程数",
-			"queue_size":          "任务队列大小",
-			"queue_length":        "当前队列长度",
-			"available_workers":   "可用工作线程数",
-			"total_tasks":         "总任务数",
-			"success_tasks":       "成功任务数",
-			"failed_tasks":        "失败任务数",
-			"timeout_tasks":       "超时任务数",
-			"queue_full_tasks":    "队列满拒绝任务数",
-			"success_rate":        "成功率（%）",
-			"avg_process_time_ms": "平均处理时间（毫秒）",
-		},
-		"health_indicators": map[string]interface{}{
-			"is_healthy":     stats["success_rate"].(float64) > 95.0 && stats["queue_length"].(float64) < stats["queue_size"].(float64)*0.8,
-			"queue_pressure": float64(stats["queue_length"].(int)) / float64(stats["queue_size"].(int)) * 100,
-			"worker_usage":   float64(stats["max_workers"].(int)-stats["available_workers"].(int)) / float64(stats["max_workers"].(int)) * 100,
 		},
 		"timestamp": time.Now().Unix(),
 	}

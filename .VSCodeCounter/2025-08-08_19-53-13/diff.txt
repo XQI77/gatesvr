@@ -1,0 +1,214 @@
+Date : 2025-08-08 19:53:13
+Directory : d:\25cxx\gatesvr
+Total : 130 files,  20518 codes, 1180 comments, 1595 blanks, all 23293 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| Log              |          1 |     14,297 |          0 |          1 |     14,298 |
+| Go               |         73 |      3,810 |      1,027 |        939 |      5,776 |
+| Markdown         |         17 |      1,384 |          0 |        454 |      1,838 |
+| YAML             |          8 |        410 |         52 |         49 |        511 |
+| Shell Script     |          8 |        264 |         32 |         53 |        349 |
+| Batch            |          8 |        262 |         30 |         62 |        354 |
+| Docker           |          2 |         69 |         39 |         37 |        145 |
+| Go Checksum File |          2 |         10 |          0 |          0 |         10 |
+| JSON             |          1 |         10 |          0 |          0 |         10 |
+| Go Module File   |          2 |          2 |          0 |          0 |          2 |
+| XML              |          4 |          0 |          0 |          0 |          0 |
+| PowerShell       |          2 |          0 |          0 |          0 |          0 |
+| Makefile         |          2 |          0 |          0 |          0 |          0 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++---------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                    | files      | code       | comment    | blank      | total      |
++---------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                       |        130 |     20,518 |      1,180 |      1,595 |     23,293 |
+| . (Files)                                               |         28 |     17,695 |        145 |        865 |     18,705 |
+| ..                                                      |         45 |     -9,650 |     -1,017 |     -1,954 |    -12,621 |
+| ..\try                                                  |         45 |     -9,650 |     -1,017 |     -1,954 |    -12,621 |
+| ..\try\v1                                               |         45 |     -9,650 |     -1,017 |     -1,954 |    -12,621 |
+| ..\try\v1 (Files)                                       |          8 |     -1,189 |        -35 |       -288 |     -1,512 |
+| ..\try\v1\.idea                                         |          2 |        -17 |          0 |          0 |        -17 |
+| ..\try\v1\cmd                                           |          5 |     -1,197 |        -82 |       -226 |     -1,505 |
+| ..\try\v1\cmd\client                                    |          1 |       -500 |        -37 |        -93 |       -630 |
+| ..\try\v1\cmd\gatesvr                                   |          1 |       -137 |        -17 |        -27 |       -181 |
+| ..\try\v1\cmd\gencerts                                  |          1 |       -103 |         -8 |        -19 |       -130 |
+| ..\try\v1\cmd\monitor                                   |          1 |       -376 |         -9 |        -67 |       -452 |
+| ..\try\v1\cmd\upstream                                  |          1 |        -81 |        -11 |        -20 |       -112 |
+| ..\try\v1\gatesvr                                       |          3 |     -1,802 |       -133 |       -278 |     -2,213 |
+| ..\try\v1\gatesvr\proto                                 |          3 |     -1,802 |       -133 |       -278 |     -2,213 |
+| ..\try\v1\internal                                      |         17 |     -3,175 |       -558 |       -784 |     -4,517 |
+| ..\try\v1\internal\client                               |          1 |       -488 |        -78 |       -120 |       -686 |
+| ..\try\v1\internal\gateway                              |         10 |     -1,127 |       -194 |       -267 |     -1,588 |
+| ..\try\v1\internal\message                              |          1 |       -237 |        -44 |        -60 |       -341 |
+| ..\try\v1\internal\session                              |          3 |       -862 |       -180 |       -226 |     -1,268 |
+| ..\try\v1\internal\upstream                             |          2 |       -461 |        -62 |       -111 |       -634 |
+| ..\try\v1\pkg                                           |          1 |       -101 |        -26 |        -27 |       -154 |
+| ..\try\v1\pkg\metrics                                   |          1 |       -101 |        -26 |        -27 |       -154 |
+| ..\try\v1\proto                                         |          3 |     -1,802 |       -133 |       -278 |     -2,213 |
+| ..\try\v1\scripts                                       |          6 |       -367 |        -50 |        -73 |       -490 |
+| .claude                                                 |          1 |         10 |          0 |          0 |         10 |
+| .idea                                                   |          2 |         17 |          0 |          0 |         17 |
+| cmd                                                     |          5 |      1,642 |        149 |        292 |      2,083 |
+| cmd\client                                              |          1 |        716 |         68 |        126 |        910 |
+| cmd\gatesvr                                             |          1 |        367 |         51 |         58 |        476 |
+| cmd\gencerts                                            |          1 |        103 |          8 |         19 |        130 |
+| cmd\monitor                                             |          1 |        375 |         11 |         69 |        455 |
+| cmd\upstream                                            |          1 |         81 |         11 |         20 |        112 |
+| docker                                                  |          3 |        100 |         43 |         41 |        184 |
+| docker\config                                           |          1 |         31 |          4 |          4 |         39 |
+| docker\gatesvr                                          |          1 |         33 |         20 |         19 |         72 |
+| docker\upstream                                         |          1 |         36 |         19 |         18 |         73 |
+| internal                                                |         34 |      8,323 |      1,645 |      1,926 |     11,894 |
+| internal\backup                                         |          8 |      2,397 |        405 |        550 |      3,352 |
+| internal\client                                         |          1 |        693 |        119 |        167 |        979 |
+| internal\config                                         |          1 |        249 |         27 |         33 |        309 |
+| internal\gateway                                        |         14 |      2,503 |        668 |        562 |      3,733 |
+| internal\message                                        |          1 |        237 |         44 |         60 |        341 |
+| internal\session                                        |          5 |      1,293 |        271 |        324 |      1,888 |
+| internal\upstream                                       |          4 |        951 |        111 |        230 |      1,292 |
+| pkg                                                     |          1 |        150 |         33 |         38 |        221 |
+| pkg\metrics                                             |          1 |        150 |         33 |         38 |        221 |
+| proto                                                   |          3 |      1,862 |        137 |        289 |      2,288 |
+| scripts                                                 |          8 |        369 |         45 |         98 |        512 |
++---------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++---------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                                | language         | code       | comment    | blank      | total      |
++---------------------------------------------------------+------------------+------------+------------+------------+------------+
+| d:\25cxx\gatesvr\.claude\settings.local.json            | JSON             |         10 |          0 |          0 |         10 |
+| d:\25cxx\gatesvr\.idea\modules.xml                      | XML              |          8 |          0 |          0 |          8 |
+| d:\25cxx\gatesvr\.idea\v1.iml                           | XML              |          9 |          0 |          0 |          9 |
+| d:\25cxx\gatesvr\ASYNC_QUEUE_IMPLEMENTATION.md          | Markdown         |        183 |          0 |         42 |        225 |
+| d:\25cxx\gatesvr\DOCKER-README.md                       | Markdown         |        242 |          0 |         94 |        336 |
+| d:\25cxx\gatesvr\GRPC_UNICAST_SUMMARY.md                | Markdown         |        116 |          0 |         38 |        154 |
+| d:\25cxx\gatesvr\LATENCY_MONITORING.md                  | Markdown         |        160 |          0 |         46 |        206 |
+| d:\25cxx\gatesvr\Makefile                               | Makefile         |        201 |         35 |         35 |        271 |
+| d:\25cxx\gatesvr\OPTIMIZATION_SUMMARY.md                | Markdown         |        309 |          0 |         80 |        389 |
+| d:\25cxx\gatesvr\PPROF_USAGE.md                         | Markdown         |        164 |          0 |         46 |        210 |
+| d:\25cxx\gatesvr\QUICKSTART.md                          | Markdown         |        272 |          0 |         99 |        371 |
+| d:\25cxx\gatesvr\README-backup.md                       | Markdown         |        158 |          0 |         46 |        204 |
+| d:\25cxx\gatesvr\SUPPORTED_ACTIONS.md                   | Markdown         |        256 |          0 |         58 |        314 |
+| d:\25cxx\gatesvr\build-docker.bat                       | Batch            |         79 |         13 |         20 |        112 |
+| d:\25cxx\gatesvr\build-docker.sh                        | Shell Script     |         83 |         15 |         22 |        120 |
+| d:\25cxx\gatesvr\build.bat                              | Batch            |         45 |          0 |          8 |         53 |
+| d:\25cxx\gatesvr\cmd\client\main.go                     | Go               |        716 |         68 |        126 |        910 |
+| d:\25cxx\gatesvr\cmd\gatesvr\main.go                    | Go               |        367 |         51 |         58 |        476 |
+| d:\25cxx\gatesvr\cmd\gencerts\main.go                   | Go               |        103 |          8 |         19 |        130 |
+| d:\25cxx\gatesvr\cmd\monitor\main.go                    | Go               |        375 |         11 |         69 |        455 |
+| d:\25cxx\gatesvr\cmd\upstream\main.go                   | Go               |         81 |         11 |         20 |        112 |
+| d:\25cxx\gatesvr\config-backup-remote.yaml              | YAML             |         25 |          8 |          6 |         39 |
+| d:\25cxx\gatesvr\config-backup.yaml                     | YAML             |         25 |          7 |          5 |         37 |
+| d:\25cxx\gatesvr\config-primary-remote.yaml             | YAML             |         25 |          8 |          6 |         39 |
+| d:\25cxx\gatesvr\config.example.yaml                    | YAML             |         46 |          6 |          8 |         60 |
+| d:\25cxx\gatesvr\config.yaml                            | YAML             |         35 |         11 |          9 |         55 |
+| d:\25cxx\gatesvr\deploy-docker.bat                      | Batch            |        173 |         17 |         36 |        226 |
+| d:\25cxx\gatesvr\deploy-docker.sh                       | Shell Script     |        181 |         17 |         31 |        229 |
+| d:\25cxx\gatesvr\docker-compose.yml                     | YAML             |        192 |          7 |          6 |        205 |
+| d:\25cxx\gatesvr\docker\config\docker-config.yaml       | YAML             |         31 |          4 |          4 |         39 |
+| d:\25cxx\gatesvr\docker\gatesvr\Dockerfile              | Docker           |         33 |         20 |         19 |         72 |
+| d:\25cxx\gatesvr\docker\upstream\Dockerfile             | Docker           |         36 |         19 |         18 |         73 |
+| d:\25cxx\gatesvr\docker部署.md                            | Markdown         |         52 |          0 |         22 |         74 |
+| d:\25cxx\gatesvr\gatesvr.log                            | Log              |     14,297 |          0 |          1 |     14,298 |
+| d:\25cxx\gatesvr\go.mod                                 | Go Module File   |         28 |          0 |          5 |         33 |
+| d:\25cxx\gatesvr\go.sum                                 | Go Checksum File |         76 |          0 |          1 |         77 |
+| d:\25cxx\gatesvr\internal\backup\backup_manager.go      | Go               |        388 |         53 |         77 |        518 |
+| d:\25cxx\gatesvr\internal\backup\data_validator.go      | Go               |        216 |         35 |         66 |        317 |
+| d:\25cxx\gatesvr\internal\backup\failover.go            | Go               |        369 |         56 |         82 |        507 |
+| d:\25cxx\gatesvr\internal\backup\heartbeat.go           | Go               |        546 |         93 |        119 |        758 |
+| d:\25cxx\gatesvr\internal\backup\interfaces.go          | Go               |         61 |         50 |         47 |        158 |
+| d:\25cxx\gatesvr\internal\backup\sync_receiver.go       | Go               |        326 |         58 |         71 |        455 |
+| d:\25cxx\gatesvr\internal\backup\sync_service.go        | Go               |        394 |         48 |         73 |        515 |
+| d:\25cxx\gatesvr\internal\backup\types.go               | Go               |         97 |         12 |         15 |        124 |
+| d:\25cxx\gatesvr\internal\client\client.go              | Go               |        693 |        119 |        167 |        979 |
+| d:\25cxx\gatesvr\internal\config\config.go              | Go               |        249 |         27 |         33 |        309 |
+| d:\25cxx\gatesvr\internal\gateway\config.go             | Go               |         28 |          9 |         10 |         47 |
+| d:\25cxx\gatesvr\internal\gateway\handlers.go           | Go               |        323 |         58 |         72 |        453 |
+| d:\25cxx\gatesvr\internal\gateway\http_handlers.go      | Go               |        392 |        288 |         57 |        737 |
+| d:\25cxx\gatesvr\internal\gateway\ordered_sender.go     | Go               |        124 |         18 |         32 |        174 |
+| d:\25cxx\gatesvr\internal\gateway\overload_protector.go | Go               |        285 |         46 |         61 |        392 |
+| d:\25cxx\gatesvr\internal\gateway\performance.go        | Go               |        376 |         47 |         88 |        511 |
+| d:\25cxx\gatesvr\internal\gateway\server.go             | Go               |        195 |         47 |         60 |        302 |
+| d:\25cxx\gatesvr\internal\gateway\server_connection.go  | Go               |        273 |         47 |         54 |        374 |
+| d:\25cxx\gatesvr\internal\gateway\server_push.go        | Go               |         37 |          4 |          9 |         50 |
+| d:\25cxx\gatesvr\internal\gateway\server_start.go       | Go               |        106 |         31 |         32 |        169 |
+| d:\25cxx\gatesvr\internal\gateway\simple_performance.go | Go               |         47 |          4 |          6 |         57 |
+| d:\25cxx\gatesvr\internal\gateway\simple_tracker.go     | Go               |         77 |         12 |         14 |        103 |
+| d:\25cxx\gatesvr\internal\gateway\unicast_service.go    | Go               |        185 |         47 |         52 |        284 |
+| d:\25cxx\gatesvr\internal\gateway\upstream_router.go    | Go               |         55 |         10 |         15 |         80 |
+| d:\25cxx\gatesvr\internal\message\codec.go              | Go               |        237 |         44 |         60 |        341 |
+| d:\25cxx\gatesvr\internal\session\manager.go            | Go               |        517 |         93 |        120 |        730 |
+| d:\25cxx\gatesvr\internal\session\notify_ordering.go    | Go               |        118 |         28 |         34 |        180 |
+| d:\25cxx\gatesvr\internal\session\ordered_queue.go      | Go               |        245 |         37 |         53 |        335 |
+| d:\25cxx\gatesvr\internal\session\queue_config.go       | Go               |         25 |          3 |          7 |         35 |
+| d:\25cxx\gatesvr\internal\session\session.go            | Go               |        388 |        110 |        110 |        608 |
+| d:\25cxx\gatesvr\internal\upstream\manager.go           | Go               |        119 |         16 |         37 |        172 |
+| d:\25cxx\gatesvr\internal\upstream\server.go            | Go               |        571 |         66 |        123 |        760 |
+| d:\25cxx\gatesvr\internal\upstream\services.go          | Go               |        137 |         16 |         38 |        191 |
+| d:\25cxx\gatesvr\internal\upstream\unicast_client.go    | Go               |        124 |         13 |         32 |        169 |
+| d:\25cxx\gatesvr\optimize_queue_analysis.md             | Markdown         |        116 |          0 |         31 |        147 |
+| d:\25cxx\gatesvr\pkg\metrics\metrics.go                 | Go               |        150 |         33 |         38 |        221 |
+| d:\25cxx\gatesvr\proto\message.pb.go                    | Go               |        843 |         40 |        136 |      1,019 |
+| d:\25cxx\gatesvr\proto\upstream.pb.go                   | Go               |        801 |         31 |        121 |        953 |
+| d:\25cxx\gatesvr\proto\upstream_grpc.pb.go              | Go               |        218 |         66 |         32 |        316 |
+| d:\25cxx\gatesvr\scripts\generate_certs.bat             | Batch            |         40 |          7 |          9 |         56 |
+| d:\25cxx\gatesvr\scripts\generate_certs.sh              | Shell Script     |         18 |          7 |          9 |         34 |
+| d:\25cxx\gatesvr\scripts\lancy.md                       | Markdown         |         82 |          0 |         32 |        114 |
+| d:\25cxx\gatesvr\scripts\start-backup.bat               | Batch            |          5 |          0 |          3 |          8 |
+| d:\25cxx\gatesvr\scripts\start-primary.bat              | Batch            |          5 |          0 |          3 |          8 |
+| d:\25cxx\gatesvr\scripts\test_grpc_unicast.ps1          | PowerShell       |         50 |          7 |          8 |         65 |
+| d:\25cxx\gatesvr\scripts\test_performance.sh            | Shell Script     |        169 |         24 |         33 |        226 |
+| d:\25cxx\gatesvr\scripts\test_unicast.sh                | Shell Script     |          0 |          0 |          1 |          1 |
+| d:\25cxx\gatesvr\test-config.yaml                       | YAML             |         31 |          1 |          5 |         37 |
+| d:\25cxx\gatesvr\拆分上游服务器.md                             | Markdown         |        125 |          0 |         59 |        184 |
+| d:\25cxx\try\v1\.idea\modules.xml                       | XML              |         -8 |          0 |          0 |         -8 |
+| d:\25cxx\try\v1\.idea\v1.iml                            | XML              |         -9 |          0 |          0 |         -9 |
+| d:\25cxx\try\v1\GRPC_UNICAST_SUMMARY.md                 | Markdown         |       -116 |          0 |        -38 |       -154 |
+| d:\25cxx\try\v1\LATENCY_MONITORING.md                   | Markdown         |       -160 |          0 |        -46 |       -206 |
+| d:\25cxx\try\v1\Makefile                                | Makefile         |       -201 |        -35 |        -35 |       -271 |
+| d:\25cxx\try\v1\OPTIMIZATION_SUMMARY.md                 | Markdown         |       -309 |          0 |        -80 |       -389 |
+| d:\25cxx\try\v1\QUICKSTART.md                           | Markdown         |       -266 |          0 |        -75 |       -341 |
+| d:\25cxx\try\v1\build.bat                               | Batch            |        -45 |          0 |         -8 |        -53 |
+| d:\25cxx\try\v1\cmd\client\main.go                      | Go               |       -500 |        -37 |        -93 |       -630 |
+| d:\25cxx\try\v1\cmd\gatesvr\main.go                     | Go               |       -137 |        -17 |        -27 |       -181 |
+| d:\25cxx\try\v1\cmd\gencerts\main.go                    | Go               |       -103 |         -8 |        -19 |       -130 |
+| d:\25cxx\try\v1\cmd\monitor\main.go                     | Go               |       -376 |         -9 |        -67 |       -452 |
+| d:\25cxx\try\v1\cmd\upstream\main.go                    | Go               |        -81 |        -11 |        -20 |       -112 |
+| d:\25cxx\try\v1\gatesvr\proto\message.pb.go             | Go               |       -843 |        -40 |       -136 |     -1,019 |
+| d:\25cxx\try\v1\gatesvr\proto\upstream.pb.go            | Go               |       -741 |        -27 |       -110 |       -878 |
+| d:\25cxx\try\v1\gatesvr\proto\upstream_grpc.pb.go       | Go               |       -218 |        -66 |        -32 |       -316 |
+| d:\25cxx\try\v1\go.mod                                  | Go Module File   |        -26 |          0 |         -5 |        -31 |
+| d:\25cxx\try\v1\go.sum                                  | Go Checksum File |        -66 |          0 |         -1 |        -67 |
+| d:\25cxx\try\v1\internal\client\client.go               | Go               |       -488 |        -78 |       -120 |       -686 |
+| d:\25cxx\try\v1\internal\gateway\config.go              | Go               |        -14 |         -5 |         -5 |        -24 |
+| d:\25cxx\try\v1\internal\gateway\handlers.go            | Go               |       -208 |        -34 |        -43 |       -285 |
+| d:\25cxx\try\v1\internal\gateway\http_handlers.go       | Go               |       -106 |        -13 |        -20 |       -139 |
+| d:\25cxx\try\v1\internal\gateway\performance.go         | Go               |       -283 |        -38 |        -58 |       -379 |
+| d:\25cxx\try\v1\internal\gateway\server.go              | Go               |       -105 |        -24 |        -36 |       -165 |
+| d:\25cxx\try\v1\internal\gateway\server_connection.go   | Go               |       -192 |        -35 |        -43 |       -270 |
+| d:\25cxx\try\v1\internal\gateway\server_push.go         | Go               |        -65 |        -23 |        -16 |       -104 |
+| d:\25cxx\try\v1\internal\gateway\server_start.go        | Go               |        -75 |        -11 |        -23 |       -109 |
+| d:\25cxx\try\v1\internal\gateway\server_utils.go        | Go               |        -26 |         -6 |         -9 |        -41 |
+| d:\25cxx\try\v1\internal\gateway\unicast_service.go     | Go               |        -53 |         -5 |        -14 |        -72 |
+| d:\25cxx\try\v1\internal\message\codec.go               | Go               |       -237 |        -44 |        -60 |       -341 |
+| d:\25cxx\try\v1\internal\session\cache.go               | Go               |       -260 |        -40 |        -62 |       -362 |
+| d:\25cxx\try\v1\internal\session\manager.go             | Go               |       -379 |        -82 |        -95 |       -556 |
+| d:\25cxx\try\v1\internal\session\session.go             | Go               |       -223 |        -58 |        -69 |       -350 |
+| d:\25cxx\try\v1\internal\upstream\server.go             | Go               |       -339 |        -48 |        -81 |       -468 |
+| d:\25cxx\try\v1\internal\upstream\unicast_client.go     | Go               |       -122 |        -14 |        -30 |       -166 |
+| d:\25cxx\try\v1\pkg\metrics\metrics.go                  | Go               |       -101 |        -26 |        -27 |       -154 |
+| d:\25cxx\try\v1\proto\message.pb.go                     | Go               |       -843 |        -40 |       -136 |     -1,019 |
+| d:\25cxx\try\v1\proto\upstream.pb.go                    | Go               |       -741 |        -27 |       -110 |       -878 |
+| d:\25cxx\try\v1\proto\upstream_grpc.pb.go               | Go               |       -218 |        -66 |        -32 |       -316 |
+| d:\25cxx\try\v1\scripts\generate_certs.bat              | Batch            |        -40 |         -7 |         -9 |        -56 |
+| d:\25cxx\try\v1\scripts\generate_certs.sh               | Shell Script     |        -18 |         -7 |         -9 |        -34 |
+| d:\25cxx\try\v1\scripts\test_grpc_unicast.go            | Go               |        -90 |         -5 |        -13 |       -108 |
+| d:\25cxx\try\v1\scripts\test_grpc_unicast.ps1           | PowerShell       |        -50 |         -7 |         -8 |        -65 |
+| d:\25cxx\try\v1\scripts\test_performance.sh             | Shell Script     |       -169 |        -24 |        -33 |       -226 |
+| d:\25cxx\try\v1\scripts\test_unicast.sh                 | Shell Script     |          0 |          0 |         -1 |         -1 |
+| Total                                                   |                  |     20,518 |      1,180 |      1,595 |     23,293 |
++---------------------------------------------------------+------------------+------------+------------+------------+------------+

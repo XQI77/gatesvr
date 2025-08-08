@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // 导入pprof HTTP端点
 	"sync"
 	"time"
-	_ "net/http/pprof" // 导入pprof HTTP端点
 
 	"github.com/quic-go/quic-go"
 	"google.golang.org/grpc"
@@ -34,13 +34,10 @@ type Server struct {
 	metrics            *metrics.GateServerMetrics // 监控指标
 	performanceTracker *SimpleTracker             // 简化的性能追踪器（替代复杂的PerformanceTracker）
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
-	startProcessor     *StartMessageProcessor     // START消息异步处理器（todo不需要这个）
 
 	// 上游服务管理
 	upstreamServices *upstream.UpstreamServices // 多上游服务管理器
 	upstreamManager  *upstream.ServiceManager   // 上游服务连接管理器
-	upstreamClient   pb.UpstreamServiceClient   // 保留向后兼容
-	upstreamConn     *grpc.ClientConn           // 保留向后兼容
 
 	// 服务器实例
 	quicListener  *quic.Listener
@@ -81,24 +78,6 @@ func NewServer(config *Config) *Server {
 	// 初始化有序消息发送器
 	server.orderedSender = NewOrderedMessageSender(server)
 
-	// 初始化START消息异步处理器
-	if config.StartProcessorConfig != nil && config.StartProcessorConfig.Enabled {
-		server.startProcessor = NewStartMessageProcessor(
-			server,
-			config.StartProcessorConfig.MaxWorkers,
-			config.StartProcessorConfig.QueueSize,
-			config.StartProcessorConfig.Timeout,
-		)
-		log.Printf("START消息异步处理器已配置 - Workers: %d, 队列: %d, 超时: %v",
-			config.StartProcessorConfig.MaxWorkers,
-			config.StartProcessorConfig.QueueSize,
-			config.StartProcessorConfig.Timeout)
-	} else {
-		// 使用默认配置：100个worker，1000个任务队列，30秒超时
-		server.startProcessor = NewStartMessageProcessor(server, 100, 1000, 30*time.Second)
-		log.Printf("START消息异步处理器使用默认配置 - Workers: 100, 队列: 1000, 超时: 30s")
-	}
-
 	// 设置读取时延回调函数
 	server.messageCodec.SetReadLatencyCallback(func(latency time.Duration) {
 		server.performanceTracker.RecordReadLatency(latency)
@@ -130,10 +109,6 @@ func (s *Server) initUpstreamServices() {
 			s.upstreamServices.AddService(serviceType, addresses)
 			log.Printf("添加上游服务 - 类型: %s, 地址: %v", serviceType, addresses)
 		}
-	} else if s.config.UpstreamAddr != "" {
-		// 向后兼容：如果只有单一上游地址，将其用作business服务
-		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{s.config.UpstreamAddr})
-		log.Printf("向后兼容模式 - 使用单一上游地址作为business服务: %s", s.config.UpstreamAddr)
 	} else {
 		// 使用默认配置
 		s.upstreamServices.AddService(upstream.ServiceTypeHello, []string{"localhost:8081"})
@@ -180,12 +155,6 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// 启动会话管理器
 	s.sessionManager.Start(ctx)
-
-	// 启动START消息异步处理器
-	if s.startProcessor != nil {
-		s.startProcessor.Start()
-		log.Printf("START消息异步处理器已启动")
-	}
 
 	// 启动备份管理器
 	if s.backupManager != nil {
@@ -243,12 +212,6 @@ func (s *Server) Stop() {
 		s.grpcServer.GracefulStop()
 	}
 
-	// 停止START消息异步处理器
-	if s.startProcessor != nil {
-		s.startProcessor.Stop()
-		log.Printf("START消息异步处理器已停止")
-	}
-
 	// 停止备份管理器
 	if s.backupManager != nil {
 		if err := s.backupManager.Stop(); err != nil {
@@ -266,11 +229,6 @@ func (s *Server) Stop() {
 		if err := s.upstreamManager.Close(); err != nil {
 			log.Printf("关闭上游服务管理器失败: %v", err)
 		}
-	}
-
-	// 关闭向后兼容的单一上游连接
-	if s.upstreamConn != nil {
-		s.upstreamConn.Close()
 	}
 
 	// 等待所有goroutine结束

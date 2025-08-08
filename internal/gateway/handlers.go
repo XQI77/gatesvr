@@ -28,14 +28,12 @@ func (s *Server) handleHeartbeat(sess *session.Session, req *pb.ClientRequest) b
 		return false
 	}
 
-	// 解析心跳请求 - 记录解析时延
-	parseStart := time.Now()
+	// 解析心跳请求
 	heartbeatReq := &pb.HeartbeatRequest{}
 	if err := proto.Unmarshal(req.Payload, heartbeatReq); err != nil {
 		log.Printf("解析心跳请求失败: %v", err)
 		return false
 	}
-	s.performanceTracker.RecordParseLatency(time.Since(parseStart))
 
 	// 发送心跳响应（使用有序发送器）
 	if err := s.orderedSender.SendHeartbeatResponse(sess, req.MsgId, heartbeatReq.ClientTimestamp); err != nil {
@@ -56,8 +54,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		s.performanceTracker.RecordTotalLatency(time.Since(startTime))
 	}()
 
-	// 验证业务消息序列号（业务消息必须有序列号） - 记录序列号验证时延
-	seqValidateStart := time.Now()
+	// 验证业务消息序列号（业务消息必须有序列号）
 	if !s.sessionManager.ValidateClientSequence(sess.ID, req.SeqId) {
 		expectedSeq := s.sessionManager.GetExpectedClientSequence(sess.ID)
 		log.Printf("业务消息序列号验证失败 - 会话: %s, 实际序列号: %d, 期待序列号: %d",
@@ -66,7 +63,6 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 			fmt.Sprintf("序列号必须递增且连续，期待: %d, 实际: %d", expectedSeq, req.SeqId))
 		return false
 	}
-	seqValidateLatency := time.Since(seqValidateStart)
 
 	// 解析业务请求 - 记录解析时延
 	parseStart := time.Now()
@@ -152,16 +148,13 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 		return false
 	}
 
-	// 处理登录成功的情况 - 记录登录处理时延
-	var loginProcessLatency time.Duration
+	// 处理登录成功的情况
 	if isLoginAction && upstreamResp.Code == 200 {
-		loginProcessStart := time.Now()
 		if err := s.handleLoginSuccess(sess, upstreamResp); err != nil {
 			log.Printf("处理登录成功失败: %v", err)
 			s.sendErrorResponse(sess, req.MsgId, 500, "登录处理失败", err.Error())
 			return false
 		}
-		loginProcessLatency = time.Since(loginProcessStart)
 	}
 
 	// 发送业务响应（使用有序发送器，gatesvr统一管理序列号） - 记录发送响应时延
@@ -172,27 +165,18 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	}
 	sendRespLatency := time.Since(sendRespStart)
 
-	// 如果需要处理绑定的notify消息，使用保序机制 - 记录notify处理时延
-	processNotifyStart := time.Now()
+	// 如果需要处理绑定的notify消息，使用保序机制
 	grid := uint32(req.SeqId)
 	if err := s.processBoundNotifies(sess, grid); err != nil {
 		log.Printf("处理绑定notify消息失败: %v", err)
-		// 不返回错误，因为主响应已经发送成功
 	}
-	processNotifyLatency := time.Since(processNotifyStart)
 
 	// 记录各阶段详细时延到性能跟踪器
-
-	s.performanceTracker.RecordSeqValidateLatency(seqValidateLatency)
 	s.performanceTracker.RecordParseLatency(parseLatency)
 	s.performanceTracker.RecordStateValidateLatency(stateValidateLatency)
 	s.performanceTracker.RecordBuildReqLatency(buildReqLatency)
 	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
-	if loginProcessLatency > 0 {
-		s.performanceTracker.RecordLoginProcessLatency(loginProcessLatency)
-	}
 	s.performanceTracker.RecordSendRespLatency(sendRespLatency)
-	s.performanceTracker.RecordProcessNotifyLatency(processNotifyLatency)
 
 	log.Printf("处理业务请求 - 动作: %s, 会话: %s, 响应码: %d, 时延: 解析=%.2fms, 上游=%.2fms",
 		businessReq.Action, sess.ID, upstreamResp.Code,
@@ -219,7 +203,7 @@ func (s *Server) handleLoginSuccess(sess *session.Session, upstreamResp *pb.Upst
 		return fmt.Errorf("激活会话失败: %v", err)
 	}
 
-	// 投递缓存的消息
+	// 投递缓存的消息（todo为什么需要这个）
 	if err := s.sessionManager.DeliverCachedMessages(sess.ID); err != nil {
 		log.Printf("投递缓存消息失败: %v", err)
 		// 不返回错误，因为登录已经成功
@@ -285,58 +269,7 @@ func (s *Server) sendErrorResponse(sess *session.Session, msgID uint32, code int
 	}
 }
 
-// handleStart 处理连接建立请求 - 异步版本
-func (s *Server) handleStart(sess *session.Session, req *pb.ClientRequest) bool {
-	startTime := time.Now()
-	defer func() {
-		s.performanceTracker.RecordTotalLatency(time.Since(startTime))
-	}()
-
-	// 根据配置选择处理方式
-	config := s.config.StartProcessorConfig
-	if config == nil || !config.Enabled || s.startProcessor == nil {
-		log.Printf("同步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
-		return s.handleStartSync(sess, req)
-	}
-
-	log.Printf("异步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
-
-	// 使用异步处理器处理START消息
-	result, err := s.startProcessor.ProcessStartMessage(sess, req)
-	if err != nil {
-		log.Printf("START消息异步处理失败: %v", err)
-		s.sendErrorResponse(sess, req.MsgId, 500, "处理失败", err.Error())
-		return false
-	}
-
-	// 处理结果
-	if !result.Success {
-		log.Printf("START消息处理失败 - 会话: %s, 错误: %v", sess.ID, result.Error)
-
-		// 发送错误响应
-		if result.Response != nil && result.Response.Error != nil {
-			s.sendErrorResponse(sess, req.MsgId, result.Response.Error.ErrorCode,
-				result.Response.Error.ErrorMessage, result.Response.Error.Detail)
-		} else {
-			s.sendErrorResponse(sess, req.MsgId, 500, "处理失败", result.Error.Error())
-		}
-		return false
-	}
-
-	// 成功处理，发送响应
-	if err := s.orderedSender.SendStartResponse(sess, req.MsgId,
-		result.Response.Success, nil,
-		result.Response.HeartbeatInterval, result.Response.ConnectionId); err != nil {
-		log.Printf("发送连接建立响应失败: %v", err)
-		return false
-	}
-
-	log.Printf("START消息异步处理成功 - 会话: %s, 处理时间: %.2fms",
-		sess.ID, result.ProcessTime.Seconds()*1000)
-	return true
-}
-
-// handleStartSync 同步处理START消息（备用方案）
+// handleStartSync 同步处理START消息
 func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) bool {
 	log.Printf("同步处理start请求 - 会话: %s, 消息ID: %d", sess.ID, req.MsgId)
 
@@ -347,15 +280,13 @@ func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) b
 		return false
 	}
 
-	// 解析连接建立请求 - 记录解析时延
-	parseStart := time.Now()
+	// 解析连接建立请求
 	startReq := &pb.StartRequest{}
 	if err := proto.Unmarshal(req.Payload, startReq); err != nil {
 		log.Printf("解析连接建立请求失败: %v", err)
 		s.sendErrorResponse(sess, req.MsgId, 400, "解析请求失败", err.Error())
 		return false
 	}
-	s.performanceTracker.RecordParseLatency(time.Since(parseStart))
 
 	// 验证必要字段
 	if startReq.Openid == "" {
@@ -367,15 +298,6 @@ func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) b
 	// 更新session的客户端信息
 	sess.OpenID = startReq.Openid
 	sess.ClientID = req.Openid // 从请求头中获取openid作为备份
-
-	// 基础认证验证（可选）
-	if startReq.AuthToken != "" {
-		if !s.validateAuthToken(startReq.AuthToken, startReq.Openid) {
-			log.Printf("认证令牌验证失败 - OpenID: %s, 会话: %s", startReq.Openid, sess.ID)
-			s.sendErrorResponse(sess, req.MsgId, 401, "认证失败", "无效的认证令牌")
-			return false
-		}
-	}
 
 	// 将session注册到openid索引中
 	if err := s.sessionManager.BindSession(sess); err != nil {
@@ -407,27 +329,6 @@ func (s *Server) handleStartSync(sess *session.Session, req *pb.ClientRequest) b
 		startReq.Openid, sess.ClientID, sess.ID, sess.State())
 
 	return true
-}
-
-// validateAuthToken 验证认证令牌（示例实现）
-func (s *Server) validateAuthToken(authToken, openID string) bool {
-	// 这里应该实现真正的令牌验证逻辑
-	// 例如：验证JWT令牌、检查令牌有效期、验证签名等
-
-	// 基础验证：令牌不能为空且长度合理
-	if authToken == "" || len(authToken) < 10 {
-		return false
-	}
-
-	// 简单的示例验证：检查令牌是否包含OpenID
-	// 在实际项目中，这里应该调用认证服务或验证JWT
-	if len(authToken) > 50 && openID != "" {
-		// 简单通过，实际项目中需要真正的验证逻辑
-		return true
-	}
-
-	// 对于没有认证令牌的情况，允许连接但要求后续登录
-	return authToken == "" || len(authToken) >= 10
 }
 
 // handleStop 处理连接断开请求

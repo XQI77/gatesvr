@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 
+	"gatesvr/internal/upstream"
 	"gatesvr/pkg/metrics"
 	pb "gatesvr/proto"
 
@@ -41,15 +42,15 @@ func (s *Server) startQUICListener() error {
 // startHTTPServer 启动HTTP API服务器
 func (s *Server) startHTTPServer() error {
 	mux := http.NewServeMux()
-	
+
 	// 基础监控API（保留）
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/stats", s.handleStats)
-	
+
 	// Go pprof性能分析端点（替换复杂的性能监控）
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP) // pprof索引页
 	mux.HandleFunc("/pprof/", http.DefaultServeMux.ServeHTTP)       // 简化路径
-	
+
 	// 可选：简化性能监控端点（如果需要基本统计）
 	mux.HandleFunc("/performance", s.handleSimplePerformance)
 
@@ -118,5 +119,50 @@ func (s *Server) startGRPCServer() error {
 	// 保存引用以便停止时清理
 	s.grpcServer = grpcServer
 
+	return nil
+}
+
+// isRunning 检查服务器是否在运行
+func (s *Server) isRunning() bool {
+	s.runningMutex.RLock()
+	defer s.runningMutex.RUnlock()
+	return s.running
+}
+
+// initUpstreamConnections 初始化上游服务连接
+func (s *Server) initUpstreamConnections() error {
+	// 如果没有配置多上游服务，尝试向后兼容模式
+	if s.upstreamServices.GetServiceCount() == 0 && s.config.UpstreamAddr != "" {
+		// 向后兼容：连接单一上游服务
+		log.Printf("上游服务启动失败 ")
+		return nil //（todo不能返回nil）
+	}
+
+	// 创建上游服务管理器
+	s.upstreamManager = upstream.NewServiceManager(s.upstreamServices)
+
+	// 预连接所有配置的上游服务
+	services := s.upstreamServices.GetAllServices()
+	connectedCount := 0
+
+	for serviceType := range services {
+		if s.upstreamServices.IsServiceAvailable(serviceType) {
+			// 尝试预连接服务（不阻塞启动）
+			go func(st upstream.ServiceType) {
+				if _, err := s.upstreamManager.GetClient(st); err != nil {
+					log.Printf("警告: 预连接上游服务失败 - %s: %v", st, err)
+				} else {
+					log.Printf("预连接上游服务成功 - %s", st)
+				}
+			}(serviceType)
+			connectedCount++
+		}
+	}
+
+	if connectedCount == 0 {
+		return fmt.Errorf("没有可用的上游服务")
+	}
+
+	log.Printf("已初始化上游服务连接管理器 - 配置服务数: %d", connectedCount)
 	return nil
 }

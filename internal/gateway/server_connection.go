@@ -83,6 +83,116 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	}
 	defer stream.Close()
 
+	// 处理第一个消息并创建会话
+	session, firstMsgData, err := s.handleFirstMessage(ctx, conn, stream)
+	if err != nil {
+		return
+	}
+
+	// 根据断开原因决定清理策略（todo 可能需要删除）
+	defer func() {
+		// 检查断开原因
+		reason := "unknown"
+		delay := true // 默认延迟清理，支持重连
+
+		s.sessionManager.RemoveSessionWithDelay(session.ID, delay, reason)
+	}()
+
+	log.Printf("创建会话: %s", session.ID)
+
+	// 更新连接数指标
+	s.metrics.SetActiveConnections(s.sessionManager.GetSessionCount())
+
+	// 处理第一个消息
+	firstMsgEvent := MessageEvent{
+		Data:      firstMsgData,
+		Err:       nil,
+		ReadTime:  time.Now(),
+		StartTime: time.Now(),
+	}
+	s.handleMessageEvent(ctx, session, firstMsgEvent)
+
+	// 处理后续消息
+	s.handleSubsequentMessages(ctx, session, stream)
+}
+
+// handleMessageEvent 处理单个消息事件
+func (s *Server) handleMessageEvent(ctx context.Context, session *session.Session, event MessageEvent) {
+	log.Printf("处理消息 - 会话: %s, 读取时间: %v, 处理开始时间: %v", session.ID, event.ReadTime, event.StartTime)
+	// 记录消息处理开始时间
+	processStartTime := time.Now()
+
+	// 记录请求和字节数
+	s.performanceTracker.RecordRequest()
+	s.performanceTracker.RecordBytes(int64(len(event.Data)))
+
+	// 更新会话活动时间和指标
+	session.UpdateActivity()
+	s.metrics.AddThroughput("inbound", int64(len(event.Data)))
+	s.metrics.IncQPS()
+
+	// 解析消息
+	clientReq, err := s.messageCodec.DecodeClientRequest(event.Data)
+	if err != nil {
+		log.Printf("解码消息失败 - 会话: %s, 错误: %v", session.ID, err)
+		s.metrics.IncError("decode_error")
+		s.performanceTracker.RecordError()
+		return
+	}
+
+	// 过载保护：检查是否允许新请求（除了心跳和ACK请求）
+	if clientReq.Type != pb.RequestType_REQUEST_HEARTBEAT &&
+		clientReq.Type != pb.RequestType_REQUEST_ACK {
+		if !s.overloadProtector.AllowNewRequest() {
+			log.Printf("请求被过载保护拒绝 - 会话: %s, 类型: %d", session.ID, clientReq.Type)
+			s.sendOverloadErrorResponse(session, clientReq)
+			s.performanceTracker.RecordError()
+			return
+		}
+	}
+
+	// 处理不同类型的消息
+	var success bool
+	switch clientReq.Type {
+	case pb.RequestType_REQUEST_START:
+		success = s.handleStartSync(session, clientReq)
+	case pb.RequestType_REQUEST_STOP:
+		success = s.handleStop(session, clientReq)
+	case pb.RequestType_REQUEST_HEARTBEAT:
+		success = s.handleHeartbeat(session, clientReq)
+	case pb.RequestType_REQUEST_BUSINESS:
+		success = s.handleBusinessRequest(ctx, session, clientReq)
+	case pb.RequestType_REQUEST_ACK:
+		success = s.handleAck(session, clientReq)
+	default:
+		log.Printf("未知消息类型: %d - 会话: %s", clientReq.Type, session.ID)
+		s.metrics.IncError("unknown_message_type")
+		s.performanceTracker.RecordError()
+		success = false
+	}
+
+	// 记录处理结果
+	if success {
+		s.performanceTracker.RecordResponse()
+	} else {
+		s.performanceTracker.RecordError()
+	}
+
+	// 记录总处理时延（不包含读取等待时间）
+	totalProcessLatency := time.Since(processStartTime)
+	s.performanceTracker.RecordTotalLatency(totalProcessLatency)
+	s.performanceTracker.RecordProcessLatency(totalProcessLatency)
+
+	// 记录主要延迟统计（用于monitor连续监控显示）
+	s.performanceTracker.RecordLatency(totalProcessLatency)
+
+	// 详细日志记录
+	log.Printf("消息处理完成 - 会话: %s, 类型: %d, 成功: %t, 处理时延: %.2fms",
+		session.ID, clientReq.Type, success, totalProcessLatency.Seconds()*1000)
+}
+
+// handleFirstMessage 处理第一个消息并创建会话
+func (s *Server) handleFirstMessage(ctx context.Context, conn *quic.Conn, stream *quic.Stream) (*session.Session, []byte, error) {
 	// 首先读取第一个消息以获取身份标识信息
 	log.Printf("等待第一个消息以获取身份标识 - 连接: %s", conn.RemoteAddr())
 
@@ -90,7 +200,7 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	if err != nil {
 		log.Printf("读取第一个消息失败 - 连接: %s, 错误: %v", conn.RemoteAddr(), err)
 		s.performanceTracker.RecordError()
-		return
+		return nil, nil, err
 	}
 
 	// 解析第一个消息以提取身份信息
@@ -98,7 +208,7 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	if err != nil {
 		log.Printf("解析第一个消息失败 - 连接: %s, 错误: %v", conn.RemoteAddr(), err)
 		s.performanceTracker.RecordError()
-		return
+		return nil, nil, err
 	}
 
 	// 从第一个消息中提取身份标识信息
@@ -126,11 +236,6 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 		}
 	}
 
-	// 如果无法从消息中提取到身份信息，使用连接地址作为后备方案
-	remoteAddr := conn.RemoteAddr().String()
-	if clientID == "" {
-		clientID = generateClientIDFromAddr(remoteAddr)
-	}
 	userIP := conn.RemoteAddr().String()
 
 	log.Printf("从第一个消息中提取身份信息 - OpenID: %s, ClientID: %s", openID, clientID)
@@ -142,29 +247,11 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 		log.Printf("检测到重连 - 会话: %s, 客户端: %s, 用户: %s", session.ID, clientID, openID)
 	}
 
-	// 根据断开原因决定清理策略
-	defer func() {
-		// 检查断开原因
-		reason := "unknown"
-		delay := true // 默认延迟清理，支持重连
+	return session, firstMsgData, nil
+}
 
-		s.sessionManager.RemoveSessionWithDelay(session.ID, delay, reason)
-	}()
-
-	log.Printf("创建会话: %s", session.ID)
-
-	// 更新连接数指标
-	s.metrics.SetActiveConnections(s.sessionManager.GetSessionCount())
-
-	// 先处理第一个消息
-	firstMsgEvent := MessageEvent{
-		Data:      firstMsgData,
-		Err:       nil,
-		ReadTime:  time.Now(),
-		StartTime: time.Now(),
-	}
-	s.handleMessageEvent(ctx, session, firstMsgEvent)
-
+// handleSubsequentMessages 处理后续消息
+func (s *Server) handleSubsequentMessages(ctx context.Context, session *session.Session, stream *quic.Stream) {
 	// 创建消息通道，适当的缓冲区避免阻塞
 	msgChan := make(chan MessageEvent, 32)
 	readCtx, readCancel := context.WithCancel(ctx)
@@ -176,8 +263,6 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 	go func() {
 		defer readWg.Done()
 		defer close(msgChan) // 确保channel被关闭
-
-		log.Printf("启动异步读取协程 - 会话: %s", session.ID)
 
 		for {
 			select {
@@ -252,89 +337,6 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 			s.handleMessageEvent(ctx, session, event)
 		}
 	}
-}
-
-// handleMessageEvent 处理单个消息事件
-func (s *Server) handleMessageEvent(ctx context.Context, session *session.Session, event MessageEvent) {
-	log.Printf("处理消息 - 会话: %s, 读取时间: %v, 处理开始时间: %v", session.ID, event.ReadTime, event.StartTime)
-	// 记录消息处理开始时间
-	processStartTime := time.Now()
-
-	// 记录请求和字节数
-	s.performanceTracker.RecordRequest()
-	s.performanceTracker.RecordBytes(int64(len(event.Data)))
-
-	// 更新会话活动时间和指标
-	session.UpdateActivity()
-	s.metrics.AddThroughput("inbound", int64(len(event.Data)))
-	s.metrics.IncQPS()
-
-	// 解析消息
-	parseStartTime := time.Now()
-	clientReq, err := s.messageCodec.DecodeClientRequest(event.Data)
-	parseEndTime := time.Now()
-
-	if err != nil {
-		log.Printf("解码消息失败 - 会话: %s, 错误: %v", session.ID, err)
-		s.metrics.IncError("decode_error")
-		s.performanceTracker.RecordError()
-		return
-	}
-
-	// 过载保护：检查是否允许新请求（除了心跳和ACK请求）
-	if clientReq.Type != pb.RequestType_REQUEST_HEARTBEAT &&
-		clientReq.Type != pb.RequestType_REQUEST_ACK {
-		if !s.overloadProtector.AllowNewRequest() {
-			log.Printf("请求被过载保护拒绝 - 会话: %s, 类型: %d", session.ID, clientReq.Type)
-			s.sendOverloadErrorResponse(session, clientReq)
-			s.performanceTracker.RecordError()
-			return
-		}
-	}
-
-	// 记录解析时延
-	parseLatency := parseEndTime.Sub(parseStartTime)
-	s.performanceTracker.RecordParseLatency(parseLatency)
-
-	// 处理不同类型的消息
-	var success bool
-	switch clientReq.Type {
-	case pb.RequestType_REQUEST_START:
-		success = s.handleStart(session, clientReq)
-	case pb.RequestType_REQUEST_STOP:
-		success = s.handleStop(session, clientReq)
-	case pb.RequestType_REQUEST_HEARTBEAT:
-		success = s.handleHeartbeat(session, clientReq)
-	case pb.RequestType_REQUEST_BUSINESS:
-		success = s.handleBusinessRequest(ctx, session, clientReq)
-	case pb.RequestType_REQUEST_ACK:
-		success = s.handleAck(session, clientReq)
-	default:
-		log.Printf("未知消息类型: %d - 会话: %s", clientReq.Type, session.ID)
-		s.metrics.IncError("unknown_message_type")
-		s.performanceTracker.RecordError()
-		success = false
-	}
-
-	// 记录处理结果
-	if success {
-		s.performanceTracker.RecordResponse()
-	} else {
-		s.performanceTracker.RecordError()
-	}
-
-	// 记录总处理时延（不包含读取等待时间）
-	totalProcessLatency := time.Since(processStartTime)
-	s.performanceTracker.RecordTotalLatency(totalProcessLatency)
-	s.performanceTracker.RecordProcessLatency(totalProcessLatency)
-
-	// 记录主要延迟统计（用于monitor连续监控显示）
-	// 在异步架构中，我们使用纯处理时延作为主要指标
-	s.performanceTracker.RecordLatency(totalProcessLatency)
-
-	// 详细日志记录
-	log.Printf("消息处理完成 - 会话: %s, 类型: %d, 成功: %t, 处理时延: %.2fms",
-		session.ID, clientReq.Type, success, totalProcessLatency.Seconds()*1000)
 }
 
 // sendOverloadErrorResponse 发送过载错误响应

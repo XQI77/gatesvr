@@ -13,8 +13,7 @@ import (
 
 // Manager 会话管理器
 type Manager struct {
-	sessions sync.Map // map[string]*Session - 所有活跃会话（按sessionID索引）
-	//sessionsByGID sync.Map // map[int64]*Session - 按GID索引的会话
+	sessions      sync.Map // map[string]*Session - 所有活跃会话（按sessionID索引）
 	sessionsByUID sync.Map // map[string]*Session - 按用户ID索引的会话（支持重连检测）
 
 	// 超时配置
@@ -37,7 +36,6 @@ type Manager struct {
 // NewManager 创建新的会话管理器
 func NewManager(sessionTimeout, ackTimeout time.Duration, maxRetries int) *Manager {
 	return &Manager{
-		// sync.Map 无需初始化，零值即可用
 		sessionTimeout:      sessionTimeout,
 		ackTimeout:          ackTimeout,
 		maxRetries:          maxRetries,

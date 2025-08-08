@@ -31,8 +31,7 @@ func (s *Server) determineUpstreamService(businessReq *pb.BusinessRequest) upstr
 // isHelloAction 判断是否为Hello服务相关操作
 func isHelloAction(action string) bool {
 	helloActions := []string{
-		"login", "auth", "signin", "hello", "logout", "register",
-		"authenticate", "status", "heartbeat", "data_sync",
+		"hello", "logout", "status", "heartbeat", "data_sync",
 	}
 
 	for _, helloAction := range helloActions {
@@ -46,8 +45,7 @@ func isHelloAction(action string) bool {
 // isZoneAction 判断是否为Zone服务相关操作
 func isZoneAction(action string) bool {
 	zoneActions := []string{
-		"zone", "area", "region", "location", "room", "channel",
-		"group", "team", "guild", "echo", "calculate", "time",
+		"zone", "echo", "calculate", "time",
 	}
 
 	for _, zoneAction := range zoneActions {
@@ -65,11 +63,6 @@ func (s *Server) callUpstreamService(ctx context.Context, serviceType upstream.S
 		return s.upstreamManager.CallService(ctx, serviceType, req)
 	}
 
-	// 向后兼容模式：使用单一上游服务
-	if s.upstreamClient != nil {
-		return s.upstreamClient.ProcessRequest(ctx, req)
-	}
-
 	return nil, fmt.Errorf("没有可用的上游服务连接")
 }
 
@@ -80,11 +73,6 @@ func (s *Server) getUpstreamServiceInfo(serviceType upstream.ServiceType) string
 		if err == nil && len(service.Addresses) > 0 {
 			return fmt.Sprintf("%s(%s)", serviceType, service.Addresses[0])
 		}
-	}
-
-	// 向后兼容模式
-	if s.config.UpstreamAddr != "" {
-		return fmt.Sprintf("兼容模式(%s)", s.config.UpstreamAddr)
 	}
 
 	return fmt.Sprintf("%s(未配置)", serviceType)
