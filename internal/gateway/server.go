@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	_ "net/http/pprof" // 导入pprof HTTP端点
 
 	"github.com/quic-go/quic-go"
 	"google.golang.org/grpc"
@@ -31,7 +32,7 @@ type Server struct {
 	sessionManager     *session.Manager           // 会话管理器
 	messageCodec       *message.MessageCodec      // 消息编解码器
 	metrics            *metrics.GateServerMetrics // 监控指标
-	performanceTracker *PerformanceTracker        // 性能追踪器
+	performanceTracker *SimpleTracker             // 简化的性能追踪器（替代复杂的PerformanceTracker）
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
 	startProcessor     *StartMessageProcessor     // START消息异步处理器（todo不需要这个）
 
@@ -69,7 +70,7 @@ func NewServer(config *Config) *Server {
 		sessionManager:     session.NewManager(config.SessionTimeout, config.AckTimeout, config.MaxRetries),
 		messageCodec:       message.NewMessageCodec(),
 		metrics:            metrics.NewGateServerMetrics(),
-		performanceTracker: NewPerformanceTracker(),
+		performanceTracker: NewSimpleTracker(), // 使用简化的性能追踪器
 		upstreamServices:   upstream.NewUpstreamServices(),
 		stopCh:             make(chan struct{}),
 	}

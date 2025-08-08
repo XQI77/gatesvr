@@ -1,11 +1,14 @@
 package session
 
 import (
+	"fmt"
+	"gatesvr/proto"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
+	protobuf "google.golang.org/protobuf/proto"
 )
 
 // SessionState 会话状态枚举
@@ -351,17 +354,6 @@ func (s *Session) CleanupExpiredBindNotifies(maxAge int64) int {
 	return s.orderingManager.CleanupExpiredNotifies(time.Now().Unix(), maxAge)
 }
 
-
-package session
-
-import (
-	"fmt"
-	"gatesvr/proto"
-	"time"
-
-	protobuf "google.golang.org/protobuf/proto"
-)
-
 // processNotify 处理notify消息的入口函数
 // 根据SyncHint判断消息的下发时机
 func (s *Session) ProcessNotify(notifyReq *proto.UnicastPushRequest) error {
@@ -613,4 +605,3 @@ func (s *Session) GetPendingNotifyStats() (beforeCount, afterCount int) {
 
 	return s.orderingManager.GetPendingBeforeCount(), s.orderingManager.GetPendingAfterCount()
 }
-

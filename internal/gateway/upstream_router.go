@@ -32,7 +32,7 @@ func (s *Server) determineUpstreamService(businessReq *pb.BusinessRequest) upstr
 func isHelloAction(action string) bool {
 	helloActions := []string{
 		"login", "auth", "signin", "hello", "logout", "register",
-		"authenticate", "verify", "token", "refresh",
+		"authenticate", "status", "heartbeat", "data_sync",
 	}
 
 	for _, helloAction := range helloActions {
@@ -47,7 +47,7 @@ func isHelloAction(action string) bool {
 func isZoneAction(action string) bool {
 	zoneActions := []string{
 		"zone", "area", "region", "location", "room", "channel",
-		"group", "team", "guild", "match", "game", "time",
+		"group", "team", "guild", "echo", "calculate", "time",
 	}
 
 	for _, zoneAction := range zoneActions {

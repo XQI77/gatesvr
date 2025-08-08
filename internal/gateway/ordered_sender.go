@@ -43,7 +43,7 @@ func (oms *OrderedMessageSender) SendOrderedMessage(sess *session.Session, push 
 	}
 	msgEncodeLatency := time.Since(msgEncodeStart)
 	oms.server.performanceTracker.RecordMsgEncodeLatency(msgEncodeLatency)
-	oms.server.performanceTracker.RecordEncodeLatency(msgEncodeLatency) // 保持原有统计
+	//oms.server.performanceTracker.RecordEncodeLatency(msgEncodeLatency) // 保持原有统计
 
 	// 获取有序队列 - 记录获取队列时延
 	queueGetStart := time.Now()

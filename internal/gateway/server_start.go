@@ -41,30 +41,30 @@ func (s *Server) startQUICListener() error {
 // startHTTPServer 启动HTTP API服务器
 func (s *Server) startHTTPServer() error {
 	mux := http.NewServeMux()
+	
+	// 基础监控API（保留）
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/stats", s.handleStats)
-	mux.HandleFunc("/performance", s.handlePerformance)
-	mux.HandleFunc("/queue", s.handleQueueStatus) // 消息队列状态查询
+	
+	// Go pprof性能分析端点（替换复杂的性能监控）
+	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP) // pprof索引页
+	mux.HandleFunc("/pprof/", http.DefaultServeMux.ServeHTTP)       // 简化路径
+	
+	// 可选：简化性能监控端点（如果需要基本统计）
+	mux.HandleFunc("/performance", s.handleSimplePerformance)
 
-	// 新增的时延监控API端点
-	mux.HandleFunc("/latency/detailed", s.handleDetailedLatency)
-	mux.HandleFunc("/latency/breakdown", s.handleLatencyBreakdown)
-	mux.HandleFunc("/latency/client", s.handleClientLatency)
-	mux.HandleFunc("/latency/business", s.handleBusinessRequestLatency)     // 业务请求详细时延分析
-	mux.HandleFunc("/latency/send-ordered", s.handleSendOrderedMessageLatency) // SendOrderedMessage详细时延分析
-	
-	// 异步队列优化监控API端点
-	mux.HandleFunc("/queue/async-stats", s.handleAsyncQueueStats)           // 异步队列统计信息
-	mux.HandleFunc("/queue/optimization", s.handleQueueOptimizationAnalysis) // 队列优化分析
-	mux.HandleFunc("/queue/config", s.handleQueueConfig)                    // 队列配置管理
-	
-	// START消息处理器监控API
-	mux.HandleFunc("/start-processor", s.handleStartProcessor)
-	
-	// 过载保护监控API
-	mux.HandleFunc("/overload-protection", s.handleOverloadProtection)
-
-	// 注意：单播推送现在通过gRPC接口提供，HTTP API已移除
+	// 注释掉复杂的监控端点，使用pprof替代
+	// mux.HandleFunc("/queue", s.handleQueueStatus)
+	// mux.HandleFunc("/latency/detailed", s.handleDetailedLatency)
+	// mux.HandleFunc("/latency/breakdown", s.handleLatencyBreakdown)
+	// mux.HandleFunc("/latency/client", s.handleClientLatency)
+	// mux.HandleFunc("/latency/business", s.handleBusinessRequestLatency)
+	// mux.HandleFunc("/latency/send-ordered", s.handleSendOrderedMessageLatency)
+	// mux.HandleFunc("/queue/async-stats", s.handleAsyncQueueStats)
+	// mux.HandleFunc("/queue/optimization", s.handleQueueOptimizationAnalysis)
+	// mux.HandleFunc("/queue/config", s.handleQueueConfig)
+	// mux.HandleFunc("/start-processor", s.handleStartProcessor)
+	// mux.HandleFunc("/overload-protection", s.handleOverloadProtection)
 
 	s.httpServer = &http.Server{
 		Addr:    s.config.HTTPAddr,

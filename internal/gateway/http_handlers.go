@@ -97,6 +97,7 @@ func (s *Server) handleQueueStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+/*
 // handleDetailedLatency 处理详细时延查询请求 - 新增
 func (s *Server) handleDetailedLatency(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -245,6 +246,8 @@ func (s *Server) handleSendOrderedMessageLatency(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(response)
 }
 
+*/
+
 // handleAsyncQueueStats 处理异步队列统计信息查询 - 新增
 func (s *Server) handleAsyncQueueStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -350,6 +353,7 @@ func (s *Server) handleAsyncQueueStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+/*
 // handleQueueOptimizationAnalysis 处理队列优化分析 - 新增
 func (s *Server) handleQueueOptimizationAnalysis(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -417,6 +421,7 @@ func (s *Server) handleQueueOptimizationAnalysis(w http.ResponseWriter, r *http.
 
 	json.NewEncoder(w).Encode(response)
 }
+*/
 
 // handleQueueConfig 处理队列配置查询和设置 - 新增
 func (s *Server) handleQueueConfig(w http.ResponseWriter, r *http.Request) {
@@ -533,6 +538,8 @@ func (s *Server) getSessionsAsyncStatus() map[string]interface{} {
 	}
 }
 
+/*
+
 // handleLatencyBreakdown 处理时延分解查询 - 新增
 func (s *Server) handleLatencyBreakdown(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -573,7 +580,7 @@ func (s *Server) handleLatencyBreakdown(w http.ResponseWriter, r *http.Request) 
 
 	json.NewEncoder(w).Encode(breakdown)
 }
-
+*/
 // handleClientLatency 处理客户端时延查询 - 新增 (如果有客户端统计)
 func (s *Server) handleClientLatency(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -581,9 +588,9 @@ func (s *Server) handleClientLatency(w http.ResponseWriter, r *http.Request) {
 	// 构建客户端时延响应格式（为future使用）
 	response := map[string]interface{}{
 		"client_latency": map[string]interface{}{
-			"description":         "客户端到网关的往返时延统计",
-			"note":                "此信息需要从客户端获取，当前显示服务端处理时延",
-			"server_side_latency": s.performanceTracker.detailedLatencyTracker.GetDetailedStats()["total_latency"],
+			"description": "客户端到网关的往返时延统计",
+			"note":        "此信息需要从客户端获取，当前显示服务端处理时延",
+			//"server_side_latency": s.performanceTracker.detailedLatencyTracker.GetDetailedStats()["total_latency"],
 		},
 		"timestamp": time.Now().Unix(),
 	}
@@ -655,7 +662,7 @@ func (s *Server) handleOverloadProtection(w http.ResponseWriter, r *http.Request
 		"overload_protection_status": stats,
 		"protection_levels": map[string]interface{}{
 			"connection_level": map[string]interface{}{
-				"current_connections":       stats["current_connections"],
+				"current_connections":      stats["current_connections"],
 				"max_connections":          stats["max_connections"],
 				"connection_usage_percent": float64(stats["current_connections"].(int64)) / float64(stats["max_connections"].(int)) * 100,
 				"connections_rejected":     stats["connections_rejected"],
@@ -670,8 +677,8 @@ func (s *Server) handleOverloadProtection(w http.ResponseWriter, r *http.Request
 				}(),
 			},
 			"qps_level": map[string]interface{}{
-				"current_qps":       stats["current_qps"],
-				"max_qps":          stats["max_qps"],
+				"current_qps": stats["current_qps"],
+				"max_qps":     stats["max_qps"],
 				"qps_usage_percent": func() float64 {
 					if stats["max_qps"].(int) == 0 {
 						return 0
@@ -693,7 +700,7 @@ func (s *Server) handleOverloadProtection(w http.ResponseWriter, r *http.Request
 				}(),
 			},
 			"upstream_level": map[string]interface{}{
-				"upstream_active":         stats["upstream_active"],
+				"upstream_active":        stats["upstream_active"],
 				"max_upstream":           stats["max_upstream"],
 				"upstream_usage_percent": float64(stats["upstream_active"].(int64)) / float64(stats["max_upstream"].(int)) * 100,
 				"upstream_rejected":      stats["upstream_rejected"],
@@ -765,10 +772,10 @@ func (s *Server) handleOverloadProtection(w http.ResponseWriter, r *http.Request
 		}(),
 		"configuration": map[string]interface{}{
 			"enabled":                      stats["enabled"],
-			"uptime_seconds":              stats["uptime_seconds"],
+			"uptime_seconds":               stats["uptime_seconds"],
 			"connection_warning_threshold": "80% of max_connections",
-			"qps_warning_threshold":       "80% of max_qps", 
-			"upstream_warning_threshold":  "80% of max_upstream",
+			"qps_warning_threshold":        "80% of max_qps",
+			"upstream_warning_threshold":   "80% of max_upstream",
 		},
 		"timestamp": time.Now().Unix(),
 	}

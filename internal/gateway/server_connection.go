@@ -148,13 +148,6 @@ func (s *Server) handleConnection(ctx context.Context, conn *quic.Conn) {
 		reason := "unknown"
 		delay := true // 默认延迟清理，支持重连
 
-		// 在实际项目中，可以根据错误类型判断是否为网络问题
-		if session.Gid() == 0 {
-			// 未登录的会话，立即清理
-			delay = false
-			reason = "not logged in"
-		}
-
 		s.sessionManager.RemoveSessionWithDelay(session.ID, delay, reason)
 	}()
 
