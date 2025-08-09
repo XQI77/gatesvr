@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -101,9 +102,40 @@ func main() {
 
 		showVersion = flag.Bool("version", false, "显示版本信息")
 		showHelp    = flag.Bool("help", false, "显示帮助信息")
+		healthCheck = flag.Bool("health-check", false, "仅执行健康检查")
 	)
 
 	flag.Parse()
+
+	// 从环境变量读取配置 (覆盖默认值和命令行参数)
+	if envServer := os.Getenv("SERVER_ADDR"); envServer != "" {
+		*serverAddr = envServer
+	}
+	if envMode := os.Getenv("CLIENT_MODE"); envMode != "" {
+		switch envMode {
+		case "interactive":
+			*interactive = true
+		case "performance":
+			*performanceMode = true
+		}
+	}
+	if envOpenID := os.Getenv("CLIENT_OPENID"); envOpenID != "" {
+		*openID = envOpenID
+	}
+	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
+		// 这里可以根据需要设置日志级别
+		log.Printf("日志级别设置为: %s", envLogLevel)
+	}
+
+	// 健康检查模式
+	if *healthCheck {
+		if err := performClientHealthCheck(); err != nil {
+			log.Printf("健康检查失败: %v", err)
+			os.Exit(1)
+		}
+		log.Printf("健康检查成功")
+		os.Exit(0)
+	}
 
 	if *showVersion {
 		fmt.Println("网关客户端 v1.0.0")
@@ -168,6 +200,9 @@ func main() {
 	// 设置中断信号处理
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	// 启动健康检查服务器
+	go startClientHealthServer()
 
 	if *performanceMode {
 		// 性能测试模式
@@ -906,4 +941,45 @@ func performReconnectTest(ctx context.Context, c *client.Client, clientIndex int
 // getBuildTime 获取构建时间
 func getBuildTime() string {
 	return "unknown"
+}
+
+// startClientHealthServer 启动客户端健康检查服务器
+func startClientHealthServer() {
+	// 客户端健康检查使用端口 19080
+	httpAddr := ":19080"
+	
+	// 创建HTTP路由
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", clientHealthHandler)
+	
+	log.Printf("启动客户端HTTP健康检查服务器: %s", httpAddr)
+	
+	// 启动HTTP服务器
+	if err := http.ListenAndServe(httpAddr, mux); err != nil {
+		log.Printf("客户端HTTP健康检查服务器启动失败: %v", err)
+	}
+}
+
+// clientHealthHandler 客户端HTTP健康检查处理函数
+func clientHealthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "healthy", "service": "client", "type": "test-client"}`))
+}
+
+// performClientHealthCheck 执行客户端健康检查
+func performClientHealthCheck() error {
+	healthURL := "http://localhost:19080/health"
+	
+	resp, err := http.Get(healthURL)
+	if err != nil {
+		return fmt.Errorf("请求健康检查端点失败: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("健康检查返回状态码: %d", resp.StatusCode)
+	}
+	
+	return nil
 }

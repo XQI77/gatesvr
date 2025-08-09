@@ -18,6 +18,7 @@ services:
     restart: unless-stopped
     ports:
       - "8081:8081"
+      - "9081:9081"
     environment:
       - SERVICE_TYPE=hello
       - SERVICE_PORT=8081
@@ -25,7 +26,7 @@ services:
     networks:
       - gatesvr-network
     healthcheck:
-      test: ["CMD", "curl", "http://localhost:9081/health", "||", "exit", "1"]
+      test: ["CMD", "curl", "http://localhost:9081/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -60,6 +61,7 @@ services:
     restart: unless-stopped
     ports:
       - "8082:8082"
+      - "9081:9081"
     environment:
       - SERVICE_TYPE=business
       - SERVICE_PORT=8082
@@ -67,7 +69,7 @@ services:
     networks:
       - gatesvr-network
     healthcheck:
-      test: ["CMD", "curl", "http://localhost:9082/health", "||", "exit", "1"]
+      test: ["CMD", "curl", "http://localhost:9081/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,6 +104,7 @@ services:
     restart: unless-stopped
     ports:
       - "8083:8083"
+      - "9081:9081"
     environment:
       - SERVICE_TYPE=zone
       - SERVICE_PORT=8083
@@ -109,7 +112,7 @@ services:
     networks:
       - gatesvr-network
     healthcheck:
-      test: ["CMD", "curl", "http://localhost:9083/health", "||", "exit", "1"]
+      test: ["CMD", "curl", "http://localhost:9081/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -182,6 +185,50 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
+
+  # 客户端测试程序
+  client:
+    build:
+      context: .
+      dockerfile: docker/client/Dockerfile
+      args:
+        VERSION: ${VERSION:-latest}
+        BUILD_DATE: ${BUILD_DATE}
+        GIT_COMMIT: ${GIT_COMMIT}
+    image: client:${VERSION:-latest}
+    container_name: client
+    hostname: client
+    restart: "no"  # 客户端不需要自动重启
+    environment:
+      - SERVER_ADDR=gatesvr:8453  # 连接到gatesvr的QUIC端口
+      - CLIENT_MODE=performance   # 交互模式
+      - LOG_LEVEL=info
+    volumes:
+      - ./certs:/app/certs:ro
+    depends_on:
+      gatesvr:
+        condition: service_healthy
+    networks:
+      - gatesvr-network
+    healthcheck:
+      test: ["CMD", "./client", "-health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
 # 网络配置
 networks:

@@ -1,4 +1,4 @@
-# 多阶段构建 - gatesvr网关服务
+# 多阶段构建 - 客户端测试程序
 FROM golang:1.24-alpine AS builder
 
 # 设置构建参数
@@ -19,16 +19,16 @@ RUN go mod download
 # 复制源代码
 COPY . .
 
-# 构建gatesvr二进制文件
+# 构建客户端二进制文件
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.GitCommit=${GIT_COMMIT}" \
-    -o /app/bin/gatesvr ./cmd/gatesvr
+    -o /app/bin/client ./cmd/client
 
 # 运行阶段 - 最小化镜像
 FROM alpine:latest
 
 # 安装运行时依赖
-RUN apk --no-cache add ca-certificates tzdata wget curl
+RUN apk --no-cache add ca-certificates tzdata curl
 
 # 创建非root用户
 RUN addgroup -g 1000 appgroup && \
@@ -38,35 +38,32 @@ RUN addgroup -g 1000 appgroup && \
 WORKDIR /app
 
 # 从构建阶段复制二进制文件
-COPY --from=builder /app/bin/gatesvr ./gatesvr
+COPY --from=builder /app/bin/client ./client
 
-# 复制证书文件
+# 复制证书文件（如果客户端需要）
 COPY --from=builder /app/certs ./certs/
-
-# 创建配置文件目录
-RUN mkdir -p /app/config
 
 # 修改文件权限
 RUN chown -R appuser:appgroup /app && \
-    chmod +x /app/gatesvr
+    chmod +x /app/client
 
 # 切换到非root用户
 USER appuser
 
-# 暴露端口
-EXPOSE 8080 8092 8453 9090
+# 暴露健康检查端口
+EXPOSE 19080
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ./client -health-check 2>/dev/null || exit 1
 
 # 设置标签
 LABEL maintainer="gatesvr-team" \
       version="${VERSION}" \
-      description="gatesvr网关服务器" \
+      description="gatesvr测试客户端" \
       build-date="${BUILD_DATE}" \
       git-commit="${GIT_COMMIT}"
 
-# 启动命令
-ENTRYPOINT ["./gatesvr"]
-CMD ["-config", "docker-config.yaml"]
+# 启动命令 (默认连接到gatesvr容器的QUIC端口)
+ENTRYPOINT ["./client"]
+CMD ["-server", "gatesvr:8453", "-interactive"]
