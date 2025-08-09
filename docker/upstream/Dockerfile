@@ -1,5 +1,5 @@
 # 多阶段构建 - 上游服务(hellosvr, businesssvr, zonesvr)
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # 设置构建参数
 ARG BUILD_DATE
@@ -52,13 +52,12 @@ RUN chown -R appuser:appgroup /app && \
 # 切换到非root用户
 USER appuser
 
-# 暴露端口 (会根据启动参数动态设置)
-EXPOSE 8081 8082 8083
+# 暴露端口 (gRPC服务端口和健康检查端口)
+EXPOSE 8081 8082 8083 9081 9082 9083
 
-# 健康检查脚本
+# 健康检查脚本 (使用健康检查端口 = 服务端口+1000)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${SERVICE_PORT:-8081}/health 2>/dev/null || \
-        ./upstream -addr ":${SERVICE_PORT:-8081}" -health-check 2>/dev/null || exit 1
+    CMD ./upstream -addr ":${SERVICE_PORT:-8081}" -health-check 2>/dev/null || exit 1
 
 # 设置标签
 LABEL maintainer="gatesvr-team" \

@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"gatesvr/internal/upstream"
@@ -16,11 +19,22 @@ func main() {
 	// 命令行参数
 	var (
 		addr        = flag.String("addr", ":9000", "gRPC服务监听地址")
+		healthCheck = flag.Bool("health-check", false, "仅执行健康检查")
 		showVersion = flag.Bool("version", false, "显示版本信息")
 		showHelp    = flag.Bool("help", false, "显示帮助信息")
 	)
 
 	flag.Parse()
+
+	// 健康检查模式
+	if *healthCheck {
+		if err := performHealthCheck(*addr); err != nil {
+			log.Printf("健康检查失败: %v", err)
+			os.Exit(1)
+		}
+		log.Printf("健康检查成功")
+		os.Exit(0)
+	}
 
 	if *showVersion {
 		fmt.Println("上游服务 v1.0.0")
@@ -59,6 +73,9 @@ func main() {
 
 	// 创建服务器
 	server := upstream.NewServer(*addr)
+
+	// 启动HTTP健康检查服务器
+	go startHealthServer(*addr)
 
 	// 启动服务器
 	if err := server.Start(); err != nil {
@@ -108,4 +125,69 @@ func printStartupInfo(addr string) {
 func getBuildTime() string {
 	// 这里可以在构建时通过ldflags注入
 	return "unknown"
+}
+
+// startHealthServer 启动HTTP健康检查服务器
+func startHealthServer(grpcAddr string) {
+	// 从gRPC地址解析端口，健康检查端口 = gRPC端口 + 1000
+	grpcPort := extractPort(grpcAddr)
+	healthPort := grpcPort + 1000
+	httpAddr := fmt.Sprintf(":%d", healthPort)
+	
+	// 创建HTTP路由
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", healthHandler)
+	
+	log.Printf("启动HTTP健康检查服务器: %s (gRPC端口: %d)", httpAddr, grpcPort)
+	
+	// 启动HTTP服务器
+	if err := http.ListenAndServe(httpAddr, mux); err != nil {
+		log.Printf("HTTP健康检查服务器启动失败: %v", err)
+	}
+}
+
+// healthHandler HTTP健康检查处理函数
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "healthy", "service": "upstream"}`))
+}
+
+// performHealthCheck 执行健康检查
+func performHealthCheck(addr string) error {
+	grpcPort := extractPort(addr)
+	healthPort := grpcPort + 1000
+	healthURL := fmt.Sprintf("http://localhost:%d/health", healthPort)
+	
+	resp, err := http.Get(healthURL)
+	if err != nil {
+		return fmt.Errorf("请求健康检查端点失败: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("健康检查返回状态码: %d", resp.StatusCode)
+	}
+	
+	return nil
+}
+
+// extractPort 从地址中提取端口号
+func extractPort(addr string) int {
+	// 处理 ":8081" 格式
+	if strings.HasPrefix(addr, ":") {
+		if port, err := strconv.Atoi(addr[1:]); err == nil {
+			return port
+		}
+	}
+	
+	// 处理 "host:port" 格式
+	if idx := strings.LastIndex(addr, ":"); idx != -1 {
+		if port, err := strconv.Atoi(addr[idx+1:]); err == nil {
+			return port
+		}
+	}
+	
+	// 默认端口
+	return 8081
 }

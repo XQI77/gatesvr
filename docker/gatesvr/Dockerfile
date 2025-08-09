@@ -1,5 +1,5 @@
 # 多阶段构建 - gatesvr网关服务
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # 设置构建参数
 ARG BUILD_DATE
@@ -54,11 +54,11 @@ RUN chown -R appuser:appgroup /app && \
 USER appuser
 
 # 暴露端口
-EXPOSE 8080 8082 8090 9090
+EXPOSE 8080 8092 8453 9090
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8090/api/status || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:8090/api/status || exit 1
 
 # 设置标签
 LABEL maintainer="gatesvr-team" \
@@ -69,4 +69,4 @@ LABEL maintainer="gatesvr-team" \
 
 # 启动命令
 ENTRYPOINT ["./gatesvr"]
-CMD ["-config", "config.yaml"]
+CMD ["-config", "docker-config.yaml"]

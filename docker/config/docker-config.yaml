@@ -29,11 +29,11 @@ backup:
 # 过载保护配置 - 针对容器环境调优
 overload_protection:
   enabled: true
-  max_connections: 1000              # 最大连接数
-  connection_warning_threshold: 800   # 连接预警阈值
-  max_qps: 2000                      # 最大QPS
-  qps_warning_threshold: 1600        # QPS预警阈值
+  max_connections: 10000              # 最大连接数
+  connection_warning_threshold: 8000   # 连接预警阈值
+  max_qps: 20000                      # 最大QPS
+  qps_warning_threshold: 16000        # QPS预警阈值
   qps_window_seconds: 10             # QPS统计窗口
-  max_upstream_concurrent: 100       # 最大上游并发
+  max_upstream_concurrent: 1000       # 最大上游并发
   upstream_timeout: "30s"            # 上游超时
-  upstream_warning_threshold: 80     # 上游并发预警阈值
+  upstream_warning_threshold: 800     # 上游并发预警阈值
