@@ -2,6 +2,7 @@
 package gateway
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,12 +14,22 @@ type SimpleTracker struct {
 	activeConnections int64
 	totalRequests     int64
 	totalErrors       int64
+
+	// 轻量级QPS计算 - 使用计数器而非时间戳数组
+	lastQPSTime   time.Time // 上次QPS计算时间
+	lastTotalReqs int64     // 上次QPS计算时的总请求数
+	recentQPS     float64   // 最近的QPS值
+	qpsMutex      sync.RWMutex
 }
 
 // NewSimpleTracker 创建简化的性能跟踪器
 func NewSimpleTracker() *SimpleTracker {
+	now := time.Now()
 	return &SimpleTracker{
-		startTime: time.Now(),
+		startTime:     now,
+		lastQPSTime:   now,
+		lastTotalReqs: 0,
+		recentQPS:     0.0,
 	}
 }
 
@@ -51,7 +62,9 @@ func (st *SimpleTracker) GetBasicStats() map[string]interface{} {
 	activeConns := atomic.LoadInt64(&st.activeConnections)
 	totalConns := atomic.LoadInt64(&st.totalConnections)
 
-	qps := float64(totalReqs) / uptime.Seconds()
+	// 计算瞬时QPS（轻量级方法）
+	instantQPS := st.calculateLightweightQPS()
+
 	successRate := float64(totalReqs-totalErrs) / float64(totalReqs) * 100
 	if totalReqs == 0 {
 		successRate = 100
@@ -63,21 +76,56 @@ func (st *SimpleTracker) GetBasicStats() map[string]interface{} {
 		"active_connections": activeConns,
 		"total_requests":     totalReqs,
 		"total_errors":       totalErrs,
-		"qps":               qps,
-		"success_rate":      successRate,
+		"qps":                instantQPS,
+		"success_rate":       successRate,
 	}
 }
 
+// calculateLightweightQPS 轻量级QPS计算 - 每5秒更新一次
+func (st *SimpleTracker) calculateLightweightQPS() float64 {
+	now := time.Now()
+	currentTotalReqs := atomic.LoadInt64(&st.totalRequests)
+
+	st.qpsMutex.Lock()
+	defer st.qpsMutex.Unlock()
+
+	// 如果距离上次计算超过3秒，重新计算QPS
+	timeSinceLastCalc := now.Sub(st.lastQPSTime).Seconds()
+	if timeSinceLastCalc >= 3.0 {
+		// 计算这段时间内的请求增量
+		requestsDelta := currentTotalReqs - st.lastTotalReqs
+
+		// 计算QPS = 请求增量 / 时间间隔
+		if timeSinceLastCalc > 0 {
+			st.recentQPS = float64(requestsDelta) / timeSinceLastCalc
+		}
+
+		// 更新记录
+		st.lastQPSTime = now
+		st.lastTotalReqs = currentTotalReqs
+	}
+
+	// 如果服务刚启动（少于5秒），使用累计平均值
+	if time.Since(st.startTime).Seconds() < 5.0 {
+		uptime := time.Since(st.startTime).Seconds()
+		if uptime > 0 {
+			return float64(currentTotalReqs) / uptime
+		}
+	}
+
+	return st.recentQPS
+}
+
 // 为了兼容现有代码，提供空实现的详细监控方法
-func (st *SimpleTracker) RecordLatency(latency time.Duration)          {}
-func (st *SimpleTracker) RecordParseLatency(latency time.Duration)     {}
-func (st *SimpleTracker) RecordUpstreamLatency(latency time.Duration)  {}
-func (st *SimpleTracker) RecordSendLatency(latency time.Duration)      {}
-func (st *SimpleTracker) RecordTotalLatency(latency time.Duration)     {}
-func (st *SimpleTracker) RecordReadLatency(latency time.Duration)      {}
-func (st *SimpleTracker) RecordProcessLatency(latency time.Duration)   {}
-func (st *SimpleTracker) RecordResponse()                              {}
-func (st *SimpleTracker) RecordBytes(bytes int64)                      {}
+func (st *SimpleTracker) RecordLatency(latency time.Duration)         {}
+func (st *SimpleTracker) RecordParseLatency(latency time.Duration)    {}
+func (st *SimpleTracker) RecordUpstreamLatency(latency time.Duration) {}
+func (st *SimpleTracker) RecordSendLatency(latency time.Duration)     {}
+func (st *SimpleTracker) RecordTotalLatency(latency time.Duration)    {}
+func (st *SimpleTracker) RecordReadLatency(latency time.Duration)     {}
+func (st *SimpleTracker) RecordProcessLatency(latency time.Duration)  {}
+func (st *SimpleTracker) RecordResponse()                             {}
+func (st *SimpleTracker) RecordBytes(bytes int64)                     {}
 
 // 兼容业务请求详细阶段方法（空实现）
 func (st *SimpleTracker) RecordSeqValidateLatency(latency time.Duration)   {}

@@ -296,6 +296,7 @@ func NewPerformanceTracker() *PerformanceTracker {
 		maxLatencyEntries:      1000, // 保留最近1000个延迟记录
 		requestLatencies:       make([]time.Duration, 0, 1000),
 		detailedLatencyTracker: NewDetailedLatencyTracker(), // 新增
+
 	}
 }
 
@@ -308,11 +309,6 @@ func (pt *PerformanceTracker) RecordConnection() {
 // RecordDisconnection 记录连接断开
 func (pt *PerformanceTracker) RecordDisconnection() {
 	atomic.AddInt64(&pt.activeConnections, -1)
-}
-
-// RecordRequest 记录请求
-func (pt *PerformanceTracker) RecordRequest() {
-	atomic.AddInt64(&pt.totalRequests, 1)
 }
 
 // RecordResponse 记录响应
@@ -444,7 +440,6 @@ func (pt *PerformanceTracker) GetStats() map[string]interface{} {
 	totalConns := atomic.LoadInt64(&pt.totalConnections)
 	totalBytes := atomic.LoadInt64(&pt.totalBytes)
 
-	qps := float64(totalReqs) / uptime.Seconds()
 	throughputMBps := float64(totalBytes) / (1024 * 1024) / uptime.Seconds()
 
 	// 获取系统资源使用情况
@@ -495,7 +490,6 @@ func (pt *PerformanceTracker) GetStats() map[string]interface{} {
 		"total_responses":      totalResps,
 		"total_errors":         totalErrs,
 		"success_rate":         float64(totalResps) / float64(totalReqs) * 100,
-		"qps":                  qps,
 		"throughput_mbps":      throughputMBps,
 		"total_bytes":          totalBytes,
 		"avg_latency_ms":       float64(avgLatency.Nanoseconds()) / 1e6,

@@ -200,111 +200,6 @@ func (s *Server) handleSendOrderedMessageLatency(w http.ResponseWriter, r *http.
 
 */
 
-// handleAsyncQueueStats 处理异步队列统计信息查询 - 新增
-func (s *Server) handleAsyncQueueStats(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// 收集所有会话的异步队列统计
-	sessions := s.sessionManager.GetAllSessions()
-
-	response := map[string]interface{}{
-		"async_queue_analysis": map[string]interface{}{
-			"total_sessions": len(sessions),
-			"sessions_data":  make([]map[string]interface{}, 0, len(sessions)),
-			"summary":        map[string]interface{}{},
-		},
-		"performance_comparison": map[string]interface{}{
-			"async_vs_sync": "异步发送vs同步发送性能对比",
-			"expected_improvements": map[string]string{
-				"enqueue_latency": "从100ms降低到1-5ms",
-				"lock_contention": "大幅减少锁竞争",
-				"throughput":      "提升5-10倍",
-			},
-		},
-		"timestamp": time.Now().Unix(),
-	}
-
-	// 统计汇总数据
-	var totalAsyncSessions, totalSyncSessions int
-	var totalEnqueued, totalSent, totalFailed, totalDropped int64
-	var totalWorkers int
-	var avgSuccessRate float64
-
-	// 收集每个会话的详细统计
-	sessionsData := response["async_queue_analysis"].(map[string]interface{})["sessions_data"].([]map[string]interface{})
-
-	for _, sess := range sessions {
-		orderedQueue := sess.GetOrderedQueue()
-		if orderedQueue == nil {
-			continue
-		}
-
-		detailedStats := orderedQueue.GetQueueStats()
-
-		sessionData := map[string]interface{}{
-			"session_id":    sess.ID,
-			"create_time":   sess.CreateTime.Format("2006-01-02 15:04:05"),
-			"last_activity": sess.LastActivity.Format("2006-01-02 15:04:05"),
-			"queue_stats":   detailedStats,
-		}
-
-		// 检查是否启用了异步发送
-		if asyncEnabled, ok := detailedStats["async_enabled"].(bool); ok && asyncEnabled {
-			totalAsyncSessions++
-
-			// 提取异步发送统计
-			if asyncSend, ok := detailedStats["async_send"].(map[string]interface{}); ok {
-				if sendQueueStats, ok := asyncSend["send_queue_stats"].(map[string]interface{}); ok {
-					if val, ok := sendQueueStats["total_enqueued"].(int64); ok {
-						totalEnqueued += val
-					}
-					if val, ok := sendQueueStats["total_sent"].(int64); ok {
-						totalSent += val
-					}
-					if val, ok := sendQueueStats["total_failed"].(int64); ok {
-						totalFailed += val
-					}
-					if val, ok := sendQueueStats["dropped_tasks"].(int64); ok {
-						totalDropped += val
-					}
-					if val, ok := sendQueueStats["success_rate"].(float64); ok {
-						avgSuccessRate += val
-					}
-				}
-
-				if workerCount, ok := asyncSend["worker_count"].(int); ok {
-					totalWorkers += workerCount
-				}
-			}
-		} else {
-			totalSyncSessions++
-		}
-
-		sessionsData = append(sessionsData, sessionData)
-	}
-
-	// 计算平均成功率
-	if totalAsyncSessions > 0 {
-		avgSuccessRate /= float64(totalAsyncSessions)
-	}
-
-	// 更新汇总统计
-	response["async_queue_analysis"].(map[string]interface{})["sessions_data"] = sessionsData
-	response["async_queue_analysis"].(map[string]interface{})["summary"] = map[string]interface{}{
-		"async_sessions":      totalAsyncSessions,
-		"sync_sessions":       totalSyncSessions,
-		"total_workers":       totalWorkers,
-		"total_enqueued":      totalEnqueued,
-		"total_sent":          totalSent,
-		"total_failed":        totalFailed,
-		"total_dropped":       totalDropped,
-		"avg_success_rate":    avgSuccessRate,
-		"async_adoption_rate": float64(totalAsyncSessions) / float64(len(sessions)) * 100,
-	}
-
-	json.NewEncoder(w).Encode(response)
-}
-
 /*
 // handleQueueOptimizationAnalysis 处理队列优化分析 - 新增
 func (s *Server) handleQueueOptimizationAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -374,20 +269,6 @@ func (s *Server) handleQueueOptimizationAnalysis(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(response)
 }
 */
-
-// handleQueueConfig 处理队列配置查询和设置 - 新增
-func (s *Server) handleQueueConfig(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	switch r.Method {
-	case "GET":
-		s.handleGetQueueConfig(w, r)
-	case "POST":
-		s.handleSetQueueConfig(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
 
 // handleGetQueueConfig 获取当前队列配置
 func (s *Server) handleGetQueueConfig(w http.ResponseWriter, r *http.Request) {

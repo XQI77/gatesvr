@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"runtime"
-	"time"
 )
 
 // handleSimplePerformance 处理简化的性能监控请求
@@ -16,15 +15,11 @@ func (s *Server) handleSimplePerformance(w http.ResponseWriter, r *http.Request)
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	
-	// 获取会话统计
-	sessionCount := s.sessionManager.GetSessionCount()
+	// 获取性能追踪器统计
+	trackerStats := s.performanceTracker.GetBasicStats()
 	
 	response := map[string]interface{}{
-		"basic_stats": map[string]interface{}{
-			"active_connections": sessionCount,
-			"timestamp":          time.Now().Unix(),
-			"uptime_seconds":    time.Since(time.Now().Add(-time.Hour)).Seconds(), // 简化版本
-		},
+		"basic_stats": trackerStats,
 		"memory": map[string]interface{}{
 			"alloc_mb":      m.Alloc / 1024 / 1024,
 			"total_alloc_mb": m.TotalAlloc / 1024 / 1024,
