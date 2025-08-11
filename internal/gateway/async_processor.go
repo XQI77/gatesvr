@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"gatesvr/internal/session"
-	"gatesvr/internal/upstream"
 	pb "gatesvr/proto"
 )
 
@@ -21,7 +20,6 @@ type AsyncTask struct {
 	Session     *session.Session     // 会话对象
 	Request     *pb.ClientRequest    // 原始客户端请求
 	BusinessReq *pb.BusinessRequest  // 解析后的业务请求
-	ServiceType upstream.ServiceType // 目标服务类型
 	UpstreamReq *pb.UpstreamRequest  // 上游请求
 	Context     context.Context      // 请求上下文
 	StartTime   time.Time            // 任务开始时间
@@ -183,15 +181,16 @@ func (ap *AsyncRequestProcessor) processTask(workerID int, task *AsyncTask) {
 	// 直接使用传入的上下文（已包含上游超时设置）
 	ctx := task.Context
 
-	// 调用上游服务
+	// 调用上游服务（使用OpenID路由）
 	upstreamStart := time.Now()
-	upstreamResp, err := ap.server.callUpstreamService(ctx, task.ServiceType, task.UpstreamReq)
+	upstreamResp, err := ap.server.callUpstreamService(ctx, task.Session.OpenID, task.UpstreamReq)
 	upstreamLatency := time.Since(upstreamStart)
 	ap.server.performanceTracker.RecordUpstreamLatency(upstreamLatency)
 
 	if err != nil {
+		serviceInfo := ap.server.getUpstreamServiceInfo(task.Session.OpenID)
 		log.Printf("异步调用上游服务失败 - 任务: %s, 服务: %s, 错误: %v",
-			task.TaskID, task.ServiceType, err)
+			task.TaskID, serviceInfo, err)
 		ap.server.metrics.IncError("upstream_error")
 		ap.server.sendErrorResponse(task.Session, task.Request.MsgId, 500, "上游服务错误", err.Error())
 		return

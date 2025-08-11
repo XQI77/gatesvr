@@ -5,7 +5,11 @@ server:
   http_addr: ":8080"         # HTTP API监听地址
   grpc_addr: ":8092"         # gRPC服务监听地址
   metrics_addr: ":9090"      # 监控指标监听地址
-  upstream_addr: "localhost:9000"  # 上游gRPC服务地址
+  # upstream_addr: "localhost:9000"  # 旧的单一上游配置（已废弃）
+  
+  # 新的基于Zone的上游服务配置
+  # 上游服务将通过gRPC RegisterUpstream自动注册，无需在此预配置
+  # zone_routing_enabled: true  # 启用基于Zone的OpenID路由
 
   # TLS配置
   cert_file: "D:/25cxx/v3/certs/server.crt"  # TLS证书文件路径

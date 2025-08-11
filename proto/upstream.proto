@@ -20,6 +20,7 @@ service UpstreamService {
   rpc GetStatus(StatusRequest) returns (StatusResponse);
 }
 
+
 // 网关服务接口定义 - 供上游服务调用
 service GatewayService {
   // 单播推送消息到指定客户端
@@ -27,6 +28,9 @@ service GatewayService {
 
   // ADDED FOR BROADCAST: 广播消息到所有在线客户端
   rpc BroadcastToClients(BroadcastRequest) returns (BroadcastResponse);
+  
+  // upstream服务注册
+  rpc RegisterUpstream(UpstreamRegisterRequest) returns (UpstreamRegisterResponse);
 }
 
 // 上游请求消息
@@ -96,6 +100,20 @@ message BroadcastRequest {
 message BroadcastResponse {
   int32 sent_count = 1;      // 成功下发的客户端数量
   string message = 2;        // 响应消息，例如 "Broadcast initiated"
+}
+
+// Upstream服务注册请求
+message UpstreamRegisterRequest {
+  string address = 1;        // upstream服务地址 "ip:port"
+  string zone_id = 2;        // 大区ID "001"-"006"
+  string service_name = 3;   // 服务名称（可选）
+}
+
+// Upstream服务注册响应
+message UpstreamRegisterResponse {
+  bool success = 1;          // 是否注册成功
+  string message = 2;        // 响应消息
+  string error_code = 3;     // 错误代码（如果有）
 }
 
 // 单播目标

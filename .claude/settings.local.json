@@ -3,7 +3,8 @@
     "allow": [
       "Bash(touch:*)",
       "Bash(git restore:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(protoc:*)"
     ],
     "deny": []
   }

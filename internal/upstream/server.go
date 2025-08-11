@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	pb "gatesvr/proto"
 )
@@ -20,6 +21,10 @@ type Server struct {
 
 	// 服务器配置
 	addr string
+
+	// Zone信息（新增）
+	zoneID      string
+	gatewayAddr string
 
 	// 单播推送客户端（新增）
 	unicastClient *UnicastClient
@@ -63,13 +68,30 @@ func NewServer(addr string) *Server {
 	}
 }
 
+// SetZoneInfo 设置Zone信息和Gateway地址
+func (s *Server) SetZoneInfo(zoneID, gatewayAddr string) {
+	s.zoneID = zoneID
+	s.gatewayAddr = gatewayAddr
+	
+	// 重新初始化单播客户端使用新的gateway地址
+	s.unicastClient = NewUnicastClient(gatewayAddr)
+}
+
 // Start 启动上游服务器
 func (s *Server) Start() error {
-	log.Printf("正在启动上游服务器: %s", s.addr)
+	log.Printf("正在启动上游服务器: %s (Zone: %s)", s.addr, s.zoneID)
 
 	// 连接到网关的单播推送服务
 	if err := s.unicastClient.Connect(); err != nil {
 		log.Printf("警告: 连接网关单播服务失败: %v", err)
+	}
+
+	// 注册到Gateway（如果配置了Zone信息）
+	if s.zoneID != "" && s.gatewayAddr != "" {
+		if err := s.registerToGateway(); err != nil {
+			log.Printf("警告: 注册到Gateway失败: %v", err)
+			// 不阻塞启动，可能Gateway还未启动
+		}
 	}
 
 	// 监听端口
@@ -135,7 +157,7 @@ func (s *Server) ProcessRequest(ctx context.Context, req *pb.UpstreamRequest) (*
 
 	// 根据动作类型处理不同的业务逻辑
 	switch req.Action {
-	case "login", "auth", "signin", "hello":
+	case "hello":
 		return s.handleLogin(ctx, req)
 	case "logout":
 		return s.handleLogout(ctx, req)
@@ -756,4 +778,41 @@ func (s *Server) UpdateUserActivity(openid string) {
 	if user, exists := s.loggedInUsers[openid]; exists {
 		user.LastActive = time.Now()
 	}
+}
+
+// registerToGateway 注册到Gateway服务器
+func (s *Server) registerToGateway() error {
+	log.Printf("正在注册到Gateway: %s, Zone: %s, Address: %s", s.gatewayAddr, s.zoneID, s.addr)
+
+	// 连接到Gateway
+	conn, err := grpc.Dial(s.gatewayAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("连接Gateway失败: %w", err)
+	}
+	defer conn.Close()
+
+	client := pb.NewGatewayServiceClient(conn)
+
+	// 创建注册请求
+	req := &pb.UpstreamRegisterRequest{
+		Address:     s.addr,
+		ZoneId:      s.zoneID,
+		ServiceName: fmt.Sprintf("upstream-zone-%s", s.zoneID),
+	}
+
+	// 发送注册请求
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	resp, err := client.RegisterUpstream(ctx, req)
+	if err != nil {
+		return fmt.Errorf("注册请求失败: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("注册被拒绝: %s (错误码: %s)", resp.Message, resp.ErrorCode)
+	}
+
+	log.Printf("成功注册到Gateway - Zone: %s, Address: %s, 响应: %s", s.zoneID, s.addr, resp.Message)
+	return nil
 }

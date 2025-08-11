@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.20.1
-// source: upstream.proto
+// source: proto/upstream.proto
 
 package proto
 
@@ -163,7 +163,7 @@ var UpstreamService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "upstream.proto",
+	Metadata: "proto/upstream.proto",
 }
 
 const (
@@ -351,5 +351,5 @@ var GatewayService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "upstream.proto",
+	Metadata: "proto/upstream.proto",
 }

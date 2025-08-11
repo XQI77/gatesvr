@@ -35,9 +35,8 @@ type Server struct {
 	performanceTracker *SimpleTracker             // 简化的性能追踪器（替代复杂的PerformanceTracker）
 	orderedSender      *OrderedMessageSender      // 有序消息发送器
 
-	// 上游服务管理
-	upstreamServices *upstream.UpstreamServices // 多上游服务管理器
-	upstreamManager  *upstream.ServiceManager   // 上游服务连接管理器
+	// 上游服务管理（新：基于OpenID的路由）
+	upstreamRouter *upstream.OpenIDBasedRouter // 基于OpenID的上游服务路由器
 
 	// 服务器实例
 	quicListener  *quic.Listener
@@ -71,12 +70,14 @@ func NewServer(config *Config) *Server {
 		messageCodec:       message.NewMessageCodec(),
 		metrics:            metrics.NewGateServerMetrics(),
 		performanceTracker: NewSimpleTracker(), // 使用简化的性能追踪器
-		upstreamServices:   upstream.NewUpstreamServices(),
+		upstreamRouter:     upstream.NewOpenIDBasedRouter(), // 新：基于OpenID的路由器
 		stopCh:             make(chan struct{}),
 	}
 
-	// 初始化多上游服务配置
-	server.initUpstreamServices()
+	// 验证上游路由配置
+	if err := server.validateUpstreamRouting(); err != nil {
+		log.Printf("上游路由配置验证失败: %v", err)
+	}
 
 	// 初始化有序消息发送器
 	server.orderedSender = NewOrderedMessageSender(server)
@@ -110,28 +111,6 @@ func NewServer(config *Config) *Server {
 	return server
 }
 
-// initUpstreamServices 初始化多上游服务配置
-func (s *Server) initUpstreamServices() {
-	// 如果有新的多上游配置，使用它
-	if s.config.UpstreamServices != nil && len(s.config.UpstreamServices) > 0 {
-		for serviceTypeStr, addresses := range s.config.UpstreamServices {
-			serviceType := upstream.ServiceType(serviceTypeStr)
-			s.upstreamServices.AddService(serviceType, addresses)
-			log.Printf("添加上游服务 - 类型: %s, 地址: %v", serviceType, addresses)
-		}
-	} else {
-		// 使用默认配置
-		s.upstreamServices.AddService(upstream.ServiceTypeHello, []string{"localhost:8081"})
-		s.upstreamServices.AddService(upstream.ServiceTypeBusiness, []string{"localhost:8082"})
-		s.upstreamServices.AddService(upstream.ServiceTypeZone, []string{"localhost:8083"})
-		log.Printf("使用默认上游服务配置")
-	}
-
-	// 输出配置摘要
-	stats := s.upstreamServices.GetStats()
-	log.Printf("上游服务初始化完成 - 总服务数: %d, 已启用: %d",
-		stats["total_services"], stats["enabled_services"])
-}
 
 // Start 启动网关服务器
 func (s *Server) Start(ctx context.Context) error {
@@ -253,9 +232,9 @@ func (s *Server) Stop() {
 	s.sessionManager.Stop()
 
 	// 关闭上游服务连接
-	if s.upstreamManager != nil {
-		if err := s.upstreamManager.Close(); err != nil {
-			log.Printf("关闭上游服务管理器失败: %v", err)
+	if s.upstreamRouter != nil {
+		if err := s.upstreamRouter.Close(); err != nil {
+			log.Printf("关闭上游服务路由器失败: %v", err)
 		}
 	}
 

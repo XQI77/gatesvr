@@ -19,6 +19,8 @@ func main() {
 	// 命令行参数
 	var (
 		addr        = flag.String("addr", ":9000", "gRPC服务监听地址")
+		zoneID      = flag.String("zone", "", "Zone ID (001-006, 必填)")
+		gateway     = flag.String("gateway", "localhost:8092", "Gateway gRPC地址用于注册")
 		healthCheck = flag.Bool("health-check", false, "仅执行健康检查")
 		showVersion = flag.Bool("version", false, "显示版本信息")
 		showHelp    = flag.Bool("help", false, "显示帮助信息")
@@ -43,16 +45,27 @@ func main() {
 	}
 
 	if *showHelp {
-		fmt.Println("上游服务 - gRPC业务逻辑服务器")
+		fmt.Println("上游服务 - 基于Zone的gRPC业务逻辑服务器")
 		fmt.Println()
 		fmt.Println("使用方法:")
 		flag.PrintDefaults()
 		fmt.Println()
 		fmt.Println("示例:")
-		fmt.Println("  ./upstream -addr :9000")
+		fmt.Println("  ./upstream --zone=001 --addr=:9001 --gateway=localhost:8092")
+		fmt.Println("  ./upstream --zone=002 --addr=:9002 --gateway=localhost:8092")
 		fmt.Println()
 		fmt.Println("环境变量:")
 		fmt.Println("  UPSTREAM_ADDR    gRPC监听地址")
+		fmt.Println("  UPSTREAM_ZONE    Zone ID (001-006)")
+		fmt.Println("  GATEWAY_ADDR     Gateway gRPC地址")
+		fmt.Println()
+		fmt.Println("Zone分配说明:")
+		fmt.Println("  Zone 001: OpenID 10000-24999")
+		fmt.Println("  Zone 002: OpenID 25000-39999") 
+		fmt.Println("  Zone 003: OpenID 40000-54999")
+		fmt.Println("  Zone 004: OpenID 55000-69999")
+		fmt.Println("  Zone 005: OpenID 70000-84999")
+		fmt.Println("  Zone 006: OpenID 85000-99999")
 		fmt.Println()
 		fmt.Println("支持的业务操作:")
 		fmt.Println("  echo       - 回显消息")
@@ -67,12 +80,27 @@ func main() {
 	if envAddr := os.Getenv("UPSTREAM_ADDR"); envAddr != "" {
 		*addr = envAddr
 	}
+	if envZone := os.Getenv("UPSTREAM_ZONE"); envZone != "" {
+		*zoneID = envZone
+	}
+	if envGateway := os.Getenv("GATEWAY_ADDR"); envGateway != "" {
+		*gateway = envGateway
+	}
+
+	// 验证Zone ID参数
+	if *zoneID == "" {
+		log.Fatal("Zone ID是必填参数，请使用 --zone 指定 (001-006)")
+	}
+	if !isValidZoneID(*zoneID) {
+		log.Fatalf("无效的Zone ID: %s，必须是001-006之间的三位数字", *zoneID)
+	}
 
 	// 显示启动信息
-	printStartupInfo(*addr)
+	printStartupInfo(*addr, *zoneID, *gateway)
 
-	// 创建服务器
+	// 创建服务器并设置zone信息
 	server := upstream.NewServer(*addr)
+	server.SetZoneInfo(*zoneID, *gateway)
 
 	// 启动HTTP健康检查服务器
 	go startHealthServer(*addr)
@@ -98,11 +126,13 @@ func main() {
 }
 
 // printStartupInfo 打印启动信息
-func printStartupInfo(addr string) {
+func printStartupInfo(addr, zoneID, gateway string) {
 	fmt.Println("========================================")
-	fmt.Println("         上游服务 v1.0.0")
+	fmt.Println("      上游服务 v1.0.0 (Zone模式)")
 	fmt.Println("========================================")
 	fmt.Printf("gRPC地址:     %s\n", addr)
+	fmt.Printf("Zone ID:      %s\n", zoneID)
+	fmt.Printf("Gateway地址:  %s\n", gateway)
 	fmt.Println("========================================")
 	fmt.Println()
 
@@ -190,4 +220,27 @@ func extractPort(addr string) int {
 	
 	// 默认端口
 	return 8081
+}
+
+// isValidZoneID 验证Zone ID格式
+func isValidZoneID(zoneID string) bool {
+	// Zone ID必须是3位数字，范围001-006
+	if len(zoneID) != 3 {
+		return false
+	}
+	
+	// 检查是否为数字
+	for _, char := range zoneID {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	
+	// 检查范围 001-006
+	zone, err := strconv.Atoi(zoneID)
+	if err != nil {
+		return false
+	}
+	
+	return zone >= 1 && zone <= 6
 }

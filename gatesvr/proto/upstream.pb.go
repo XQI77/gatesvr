@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.20.1
-// source: upstream.proto
+// source: proto/upstream.proto
 
 package proto
 
@@ -55,11 +55,11 @@ func (x NotifySyncHint) String() string {
 }
 
 func (NotifySyncHint) Descriptor() protoreflect.EnumDescriptor {
-	return file_upstream_proto_enumTypes[0].Descriptor()
+	return file_proto_upstream_proto_enumTypes[0].Descriptor()
 }
 
 func (NotifySyncHint) Type() protoreflect.EnumType {
-	return &file_upstream_proto_enumTypes[0]
+	return &file_proto_upstream_proto_enumTypes[0]
 }
 
 func (x NotifySyncHint) Number() protoreflect.EnumNumber {
@@ -68,7 +68,7 @@ func (x NotifySyncHint) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NotifySyncHint.Descriptor instead.
 func (NotifySyncHint) EnumDescriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{0}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{0}
 }
 
 // 上游请求消息
@@ -87,7 +87,7 @@ type UpstreamRequest struct {
 
 func (x *UpstreamRequest) Reset() {
 	*x = UpstreamRequest{}
-	mi := &file_upstream_proto_msgTypes[0]
+	mi := &file_proto_upstream_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -99,7 +99,7 @@ func (x *UpstreamRequest) String() string {
 func (*UpstreamRequest) ProtoMessage() {}
 
 func (x *UpstreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[0]
+	mi := &file_proto_upstream_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -112,7 +112,7 @@ func (x *UpstreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamRequest.ProtoReflect.Descriptor instead.
 func (*UpstreamRequest) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{0}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *UpstreamRequest) GetSessionId() string {
@@ -178,7 +178,7 @@ type UpstreamResponse struct {
 
 func (x *UpstreamResponse) Reset() {
 	*x = UpstreamResponse{}
-	mi := &file_upstream_proto_msgTypes[1]
+	mi := &file_proto_upstream_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +190,7 @@ func (x *UpstreamResponse) String() string {
 func (*UpstreamResponse) ProtoMessage() {}
 
 func (x *UpstreamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[1]
+	mi := &file_proto_upstream_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +203,7 @@ func (x *UpstreamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamResponse.ProtoReflect.Descriptor instead.
 func (*UpstreamResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{1}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *UpstreamResponse) GetCode() int32 {
@@ -251,7 +251,7 @@ type StatusRequest struct {
 
 func (x *StatusRequest) Reset() {
 	*x = StatusRequest{}
-	mi := &file_upstream_proto_msgTypes[2]
+	mi := &file_proto_upstream_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -263,7 +263,7 @@ func (x *StatusRequest) String() string {
 func (*StatusRequest) ProtoMessage() {}
 
 func (x *StatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[2]
+	mi := &file_proto_upstream_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -276,7 +276,7 @@ func (x *StatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{2}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *StatusRequest) GetServiceName() string {
@@ -299,7 +299,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_upstream_proto_msgTypes[3]
+	mi := &file_proto_upstream_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -311,7 +311,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[3]
+	mi := &file_proto_upstream_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -324,7 +324,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{3}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StatusResponse) GetStatus() string {
@@ -373,7 +373,7 @@ type UnicastPushRequest struct {
 
 func (x *UnicastPushRequest) Reset() {
 	*x = UnicastPushRequest{}
-	mi := &file_upstream_proto_msgTypes[4]
+	mi := &file_proto_upstream_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -385,7 +385,7 @@ func (x *UnicastPushRequest) String() string {
 func (*UnicastPushRequest) ProtoMessage() {}
 
 func (x *UnicastPushRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[4]
+	mi := &file_proto_upstream_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -398,7 +398,7 @@ func (x *UnicastPushRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnicastPushRequest.ProtoReflect.Descriptor instead.
 func (*UnicastPushRequest) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{4}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UnicastPushRequest) GetTargetType() string {
@@ -476,7 +476,7 @@ type UnicastPushResponse struct {
 
 func (x *UnicastPushResponse) Reset() {
 	*x = UnicastPushResponse{}
-	mi := &file_upstream_proto_msgTypes[5]
+	mi := &file_proto_upstream_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +488,7 @@ func (x *UnicastPushResponse) String() string {
 func (*UnicastPushResponse) ProtoMessage() {}
 
 func (x *UnicastPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[5]
+	mi := &file_proto_upstream_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +501,7 @@ func (x *UnicastPushResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnicastPushResponse.ProtoReflect.Descriptor instead.
 func (*UnicastPushResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{5}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *UnicastPushResponse) GetSuccess() bool {
@@ -540,7 +540,7 @@ type BroadcastRequest struct {
 
 func (x *BroadcastRequest) Reset() {
 	*x = BroadcastRequest{}
-	mi := &file_upstream_proto_msgTypes[6]
+	mi := &file_proto_upstream_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +552,7 @@ func (x *BroadcastRequest) String() string {
 func (*BroadcastRequest) ProtoMessage() {}
 
 func (x *BroadcastRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[6]
+	mi := &file_proto_upstream_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +565,7 @@ func (x *BroadcastRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BroadcastRequest.ProtoReflect.Descriptor instead.
 func (*BroadcastRequest) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{6}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BroadcastRequest) GetMsgType() string {
@@ -614,7 +614,7 @@ type BroadcastResponse struct {
 
 func (x *BroadcastResponse) Reset() {
 	*x = BroadcastResponse{}
-	mi := &file_upstream_proto_msgTypes[7]
+	mi := &file_proto_upstream_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +626,7 @@ func (x *BroadcastResponse) String() string {
 func (*BroadcastResponse) ProtoMessage() {}
 
 func (x *BroadcastResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[7]
+	mi := &file_proto_upstream_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +639,7 @@ func (x *BroadcastResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BroadcastResponse.ProtoReflect.Descriptor instead.
 func (*BroadcastResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{7}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *BroadcastResponse) GetSentCount() int32 {
@@ -668,7 +668,7 @@ type UpstreamRegisterRequest struct {
 
 func (x *UpstreamRegisterRequest) Reset() {
 	*x = UpstreamRegisterRequest{}
-	mi := &file_upstream_proto_msgTypes[8]
+	mi := &file_proto_upstream_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -680,7 +680,7 @@ func (x *UpstreamRegisterRequest) String() string {
 func (*UpstreamRegisterRequest) ProtoMessage() {}
 
 func (x *UpstreamRegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[8]
+	mi := &file_proto_upstream_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -693,7 +693,7 @@ func (x *UpstreamRegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamRegisterRequest.ProtoReflect.Descriptor instead.
 func (*UpstreamRegisterRequest) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{8}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpstreamRegisterRequest) GetAddress() string {
@@ -729,7 +729,7 @@ type UpstreamRegisterResponse struct {
 
 func (x *UpstreamRegisterResponse) Reset() {
 	*x = UpstreamRegisterResponse{}
-	mi := &file_upstream_proto_msgTypes[9]
+	mi := &file_proto_upstream_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -741,7 +741,7 @@ func (x *UpstreamRegisterResponse) String() string {
 func (*UpstreamRegisterResponse) ProtoMessage() {}
 
 func (x *UpstreamRegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[9]
+	mi := &file_proto_upstream_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -754,7 +754,7 @@ func (x *UpstreamRegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamRegisterResponse.ProtoReflect.Descriptor instead.
 func (*UpstreamRegisterResponse) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{9}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpstreamRegisterResponse) GetSuccess() bool {
@@ -789,7 +789,7 @@ type UnicastTarget struct {
 
 func (x *UnicastTarget) Reset() {
 	*x = UnicastTarget{}
-	mi := &file_upstream_proto_msgTypes[10]
+	mi := &file_proto_upstream_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +801,7 @@ func (x *UnicastTarget) String() string {
 func (*UnicastTarget) ProtoMessage() {}
 
 func (x *UnicastTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[10]
+	mi := &file_proto_upstream_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -814,7 +814,7 @@ func (x *UnicastTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnicastTarget.ProtoReflect.Descriptor instead.
 func (*UnicastTarget) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{10}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UnicastTarget) GetTargetType() string {
@@ -844,7 +844,7 @@ type UnicastResult struct {
 
 func (x *UnicastResult) Reset() {
 	*x = UnicastResult{}
-	mi := &file_upstream_proto_msgTypes[11]
+	mi := &file_proto_upstream_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +856,7 @@ func (x *UnicastResult) String() string {
 func (*UnicastResult) ProtoMessage() {}
 
 func (x *UnicastResult) ProtoReflect() protoreflect.Message {
-	mi := &file_upstream_proto_msgTypes[11]
+	mi := &file_proto_upstream_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +869,7 @@ func (x *UnicastResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnicastResult.ProtoReflect.Descriptor instead.
 func (*UnicastResult) Descriptor() ([]byte, []int) {
-	return file_upstream_proto_rawDescGZIP(), []int{11}
+	return file_proto_upstream_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UnicastResult) GetTargetType() string {
@@ -900,11 +900,11 @@ func (x *UnicastResult) GetErrorMessage() string {
 	return ""
 }
 
-var File_upstream_proto protoreflect.FileDescriptor
+var File_proto_upstream_proto protoreflect.FileDescriptor
 
-const file_upstream_proto_rawDesc = "" +
+const file_proto_upstream_proto_rawDesc = "" +
 	"\n" +
-	"\x0eupstream.proto\x12\rgatesvr.proto\"\x9a\x03\n" +
+	"\x14proto/upstream.proto\x12\rgatesvr.proto\"\x9a\x03\n" +
 	"\x0fUpstreamRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
@@ -1003,20 +1003,20 @@ const file_upstream_proto_rawDesc = "" +
 	"\x10RegisterUpstream\x12&.gatesvr.proto.UpstreamRegisterRequest\x1a'.gatesvr.proto.UpstreamRegisterResponseB\x0fZ\rgatesvr/protob\x06proto3"
 
 var (
-	file_upstream_proto_rawDescOnce sync.Once
-	file_upstream_proto_rawDescData []byte
+	file_proto_upstream_proto_rawDescOnce sync.Once
+	file_proto_upstream_proto_rawDescData []byte
 )
 
-func file_upstream_proto_rawDescGZIP() []byte {
-	file_upstream_proto_rawDescOnce.Do(func() {
-		file_upstream_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_upstream_proto_rawDesc), len(file_upstream_proto_rawDesc)))
+func file_proto_upstream_proto_rawDescGZIP() []byte {
+	file_proto_upstream_proto_rawDescOnce.Do(func() {
+		file_proto_upstream_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_upstream_proto_rawDesc), len(file_proto_upstream_proto_rawDesc)))
 	})
-	return file_upstream_proto_rawDescData
+	return file_proto_upstream_proto_rawDescData
 }
 
-var file_upstream_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
-var file_upstream_proto_goTypes = []any{
+var file_proto_upstream_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_upstream_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_proto_upstream_proto_goTypes = []any{
 	(NotifySyncHint)(0),              // 0: gatesvr.proto.NotifySyncHint
 	(*UpstreamRequest)(nil),          // 1: gatesvr.proto.UpstreamRequest
 	(*UpstreamResponse)(nil),         // 2: gatesvr.proto.UpstreamResponse
@@ -1037,7 +1037,7 @@ var file_upstream_proto_goTypes = []any{
 	nil,                              // 17: gatesvr.proto.UnicastPushRequest.MetadataEntry
 	nil,                              // 18: gatesvr.proto.BroadcastRequest.MetadataEntry
 }
-var file_upstream_proto_depIdxs = []int32{
+var file_proto_upstream_proto_depIdxs = []int32{
 	13, // 0: gatesvr.proto.UpstreamRequest.params:type_name -> gatesvr.proto.UpstreamRequest.ParamsEntry
 	14, // 1: gatesvr.proto.UpstreamRequest.headers:type_name -> gatesvr.proto.UpstreamRequest.HeadersEntry
 	15, // 2: gatesvr.proto.UpstreamResponse.headers:type_name -> gatesvr.proto.UpstreamResponse.HeadersEntry
@@ -1062,27 +1062,27 @@ var file_upstream_proto_depIdxs = []int32{
 	0,  // [0:7] is the sub-list for field type_name
 }
 
-func init() { file_upstream_proto_init() }
-func file_upstream_proto_init() {
-	if File_upstream_proto != nil {
+func init() { file_proto_upstream_proto_init() }
+func file_proto_upstream_proto_init() {
+	if File_proto_upstream_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_upstream_proto_rawDesc), len(file_upstream_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_upstream_proto_rawDesc), len(file_proto_upstream_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
-		GoTypes:           file_upstream_proto_goTypes,
-		DependencyIndexes: file_upstream_proto_depIdxs,
-		EnumInfos:         file_upstream_proto_enumTypes,
-		MessageInfos:      file_upstream_proto_msgTypes,
+		GoTypes:           file_proto_upstream_proto_goTypes,
+		DependencyIndexes: file_proto_upstream_proto_depIdxs,
+		EnumInfos:         file_proto_upstream_proto_enumTypes,
+		MessageInfos:      file_proto_upstream_proto_msgTypes,
 	}.Build()
-	File_upstream_proto = out.File
-	file_upstream_proto_goTypes = nil
-	file_upstream_proto_depIdxs = nil
+	File_proto_upstream_proto = out.File
+	file_proto_upstream_proto_goTypes = nil
+	file_proto_upstream_proto_depIdxs = nil
 }
