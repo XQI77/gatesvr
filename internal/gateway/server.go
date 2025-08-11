@@ -51,6 +51,9 @@ type Server struct {
 	// 过载保护器
 	overloadProtector *OverloadProtector // 过载保护器
 
+	// 异步处理器
+	asyncProcessor *AsyncRequestProcessor // 异步请求处理器
+
 	// 状态管理
 	running      bool
 	runningMutex sync.RWMutex
@@ -96,6 +99,13 @@ func NewServer(config *Config) *Server {
 
 	// 初始化过载保护器
 	server.overloadProtector = NewOverloadProtector(config.OverloadProtectionConfig, server.metrics)
+
+	// 初始化异步处理器
+	asyncConfig := config.AsyncConfig
+	if asyncConfig == nil {
+		asyncConfig = DefaultAsyncConfig // 使用默认配置
+	}
+	server.asyncProcessor = NewAsyncRequestProcessor(server, asyncConfig)
 
 	return server
 }
@@ -165,6 +175,15 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}
 
+	// 启动异步处理器
+	if s.asyncProcessor != nil {
+		if err := s.asyncProcessor.Start(); err != nil {
+			log.Printf("启动异步处理器失败: %v", err)
+		} else {
+			log.Printf("异步处理器已启动")
+		}
+	}
+
 	// 启动连接处理器
 	s.wg.Add(1)
 	go s.acceptConnections(ctx)
@@ -210,6 +229,15 @@ func (s *Server) Stop() {
 	// 停止gRPC服务器
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
+	}
+
+	// 停止异步处理器
+	if s.asyncProcessor != nil {
+		if err := s.asyncProcessor.Stop(); err != nil {
+			log.Printf("停止异步处理器失败: %v", err)
+		} else {
+			log.Printf("异步处理器已停止")
+		}
 	}
 
 	// 停止备份管理器

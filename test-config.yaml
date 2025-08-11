@@ -35,3 +35,9 @@ overload_protection:
   qps_window_seconds: 10
   max_upstream_concurrent: 100
   upstream_timeout: "30s"
+
+# 异步处理器配置 - 用于grpc异步调用
+async:
+  max_workers: 16          # 工作协程数，建议为CPU核数的4倍
+  max_queue_size: 10000    # 异步任务队列大小
+  task_timeout: "30s"      # 单个异步任务超时时间

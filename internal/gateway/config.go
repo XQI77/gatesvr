@@ -35,6 +35,9 @@ type Config struct {
 
 	// 过载保护配置
 	OverloadProtectionConfig *OverloadConfig // 过载保护配置
+
+	// 异步处理配置
+	AsyncConfig *AsyncConfig // 异步请求处理配置
 }
 
 // StartProcessorConfig START消息处理器配置

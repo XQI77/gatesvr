@@ -4,15 +4,15 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"gatesvr/internal/session"
+	"gatesvr/internal/upstream"
+	pb "gatesvr/proto"
 	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
-
-	"gatesvr/internal/session"
-	pb "gatesvr/proto"
 )
 
 // handleHeartbeat 处理心跳消息
@@ -77,7 +77,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 
 	// 检查是否为登录请求 - 记录状态验证时延
 	stateValidateStart := time.Now()
-	isLoginAction := isHelloAction(strings.ToLower(businessReq.Action))
+	isLoginAction := strings.ToLower(businessReq.Action) == "hello"
 
 	// 验证会话状态权限
 	if isLoginAction {
@@ -135,6 +135,68 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 
 	log.Printf("路由业务请求 - 动作: %s, 目标服务: %s", businessReq.Action, serviceInfo)
 
+	// Hello请求必须同步处理，等待上游服务返回结果
+	if isLoginAction {
+		log.Printf("Hello请求使用同步处理 - 会话: %s, 动作: %s", sess.ID, businessReq.Action)
+		return s.handleBusinessRequestSync(ctx, sess, req, businessReq, serviceType, upstreamReq,
+			upstreamCtx, isLoginAction, parseLatency, stateValidateLatency, buildReqLatency, startTime)
+	}
+
+	// 异步处理上游服务调用 - 构建异步任务
+	taskID := fmt.Sprintf("%s-%d", sess.ID, req.SeqId)
+	
+	// 为异步任务创建独立的上下文，避免与请求处理生命周期绑定
+	asyncCtx := context.Background()
+	if s.overloadProtector.config != nil && s.overloadProtector.config.UpstreamTimeout > 0 {
+		var cancel context.CancelFunc
+		asyncCtx, cancel = context.WithTimeout(context.Background(), s.overloadProtector.config.UpstreamTimeout)
+		// 注意：这里不能defer cancel()，因为context要传递给异步任务使用
+		_ = cancel // 避免未使用变量警告，cancel会在任务完成后自动释放
+	}
+	
+	asyncTask := &AsyncTask{
+		TaskID:      taskID,
+		SessionID:   sess.ID,
+		Session:     sess,
+		Request:     req,
+		BusinessReq: businessReq,
+		ServiceType: serviceType,
+		UpstreamReq: upstreamReq,
+		Context:     asyncCtx, // 使用独立的context
+		StartTime:   startTime, // 使用函数开始时间
+		IsLogin:     isLoginAction,
+	}
+
+	// 提交到异步处理器
+	if s.asyncProcessor == nil {
+		// 异步处理器未初始化，回退到同步处理
+		log.Printf("异步处理器未启用，使用同步处理 - 会话: %s", sess.ID)
+		return s.handleBusinessRequestSync(ctx, sess, req, businessReq, serviceType, upstreamReq,
+			upstreamCtx, isLoginAction, parseLatency, stateValidateLatency, buildReqLatency, startTime)
+	}
+
+	if !s.asyncProcessor.SubmitTask(asyncTask) {
+		// 异步队列已满，返回过载错误
+		log.Printf("异步队列已满，拒绝请求 - 会话: %s, 动作: %s", sess.ID, businessReq.Action)
+		s.sendErrorResponse(sess, req.MsgId, 503, "服务繁忙", "异步处理队列已满，请稍后重试")
+		return false
+	}
+
+	// 记录前置阶段时延
+	s.performanceTracker.RecordParseLatency(parseLatency)
+	s.performanceTracker.RecordStateValidateLatency(stateValidateLatency)
+	s.performanceTracker.RecordBuildReqLatency(buildReqLatency)
+
+	log.Printf("业务请求已提交异步处理 - 动作: %s, 会话: %s, 任务ID: %s, 前置时延: 解析=%.2fms",
+		businessReq.Action, sess.ID, taskID, parseLatency.Seconds()*1000)
+	return true
+}
+
+// handleBusinessRequestSync 同步处理业务请求
+func (s *Server) handleBusinessRequestSync(ctx context.Context, sess *session.Session, req *pb.ClientRequest,
+	businessReq *pb.BusinessRequest, serviceType upstream.ServiceType, upstreamReq *pb.UpstreamRequest,
+	upstreamCtx context.Context, isLoginAction bool, parseLatency, stateValidateLatency, buildReqLatency time.Duration, startTime time.Time) bool {
+
 	// 调用上游服务 - 记录上游调用时延
 	upstreamStart := time.Now()
 	upstreamResp, err := s.callUpstreamService(upstreamCtx, serviceType, upstreamReq)
@@ -142,6 +204,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
 
 	if err != nil {
+		serviceInfo := s.getUpstreamServiceInfo(serviceType)
 		log.Printf("调用上游服务失败 - 服务: %s, 错误: %v", serviceInfo, err)
 		s.metrics.IncError("upstream_error")
 		s.sendErrorResponse(sess, req.MsgId, 500, "上游服务错误", err.Error())
@@ -178,7 +241,7 @@ func (s *Server) handleBusinessRequest(ctx context.Context, sess *session.Sessio
 	s.performanceTracker.RecordUpstreamLatency(upstreamLatency)
 	s.performanceTracker.RecordSendRespLatency(sendRespLatency)
 
-	log.Printf("处理业务请求 - 动作: %s, 会话: %s, 响应码: %d, 时延: 解析=%.2fms, 上游=%.2fms",
+	log.Printf("同步处理业务请求完成 - 动作: %s, 会话: %s, 响应码: %d, 时延: 解析=%.2fms, 上游=%.2fms",
 		businessReq.Action, sess.ID, upstreamResp.Code,
 		parseLatency.Seconds()*1000,
 		upstreamLatency.Seconds()*1000)
